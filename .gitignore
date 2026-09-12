@@ -1,0 +1,14 @@
+node_modules/
+dist/
+cdk.out/
+private/
+*.sqlite*
+*.sql
+*.tfstate*
+*.env*
+!*.env.example
+test-results/
+playwright-report/
+release/
+cdk.context.json
+*.log
