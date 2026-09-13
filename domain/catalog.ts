@@ -1,0 +1,33 @@
+// Stable IDs: append new built-ins; never reorder or rename an existing ID.
+const catalog = [
+  ["Barbell Bench Press", "Chest", "Barbell"],
+  ["Incline Dumbbell Press", "Chest", "Dumbbells"],
+  ["Cable Fly", "Chest", "Cable"],
+  ["Pull Up", "Back", "Bodyweight"],
+  ["Chest-Supported Row", "Back", "Dumbbells"],
+  ["Lat Pulldown", "Back", "Cable"],
+  ["Single-Arm Cable Row", "Back", "Cable"],
+  ["Seated Dumbbell Press", "Shoulders", "Dumbbells"],
+  ["Cable Lateral Raise", "Shoulders", "Cable"],
+  ["Rear Delt Fly", "Shoulders", "Machine"],
+  ["Dumbbell Curl", "Biceps", "Dumbbells"],
+  ["Hammer Curl", "Biceps", "Dumbbells"],
+  ["Cable Triceps Pressdown", "Triceps", "Cable"],
+  ["Overhead Triceps Extension", "Triceps", "Cable"],
+  ["Back Squat", "Quads", "Barbell"],
+  ["Leg Press", "Quads", "Machine"],
+  ["Leg Extension", "Quads", "Machine"],
+  ["Romanian Deadlift", "Hamstrings", "Barbell"],
+  ["Seated Leg Curl", "Hamstrings", "Machine"],
+  ["Hip Thrust", "Glutes", "Barbell"],
+  ["Bulgarian Split Squat", "Glutes", "Dumbbells"],
+  ["Standing Calf Raise", "Calves", "Machine"],
+  ["Cable Crunch", "Core", "Cable"],
+  ["Hanging Knee Raise", "Core", "Bodyweight"],
+] as const;
+export const builtins = catalog.map(([name, muscle, equipment], index) => ({
+  id: `builtin-${String(index + 1).padStart(3, "0")}`,
+  name,
+  muscle,
+  equipment,
+}));

@@ -1,0 +1,9 @@
+# Cost assumptions
+
+Checked against official AWS pricing pages on 2026-09-12. Six people at roughly three workouts a week is a low-volume workload, but autosave writes and transactional receipts are more numerous than completed workouts. A rough $1–5/month expectation remains plausible with applicable allowances; plan a $10 buffer and verify it after measuring usage. Neither estimate nor budget alert is a cap.
+
+DynamoDB on-demand reads/writes are billed by request units and item size; transactional writes cost more units, and the provisioned-throughput free allowance must not be applied to this on-demand design. Table storage, PITR, daily backup storage, full exports, restores and S3 storage/versioning/replication can be billed separately. Do not assume new-account credits or organizational free allowances apply independently to both accounts. [DynamoDB pricing](https://aws.amazon.com/dynamodb/pricing/), [AWS Backup pricing](https://aws.amazon.com/backup/pricing/).
+
+Cognito Lite/Essentials include monthly-active-user allowances, but eligibility is account/organization-dependent. Managed-login configuration here uses Essentials. Lambda allowances may cover low-volume requests/compute; CloudFront, S3, HTTP API, CloudWatch alarms/logs and notifications still need review. [Cognito pricing](https://aws.amazon.com/cognito/pricing/), [Lambda pricing](https://aws.amazon.com/lambda/pricing/), [CloudFront pricing](https://aws.amazon.com/cloudfront/pricing/).
+
+Before enabling accounts, use the AWS calculator for us-west-2 and the actual billing plan. Include both environments, archive size and retained versions, seven daily copies, eight weekly exports, monitoring, replication and quarterly drills. Measure the first month and adjust retention/alerts through a reviewed change. No VPC, NAT, ALB, RDS, provisioned capacity or provisioned Lambda concurrency is included.

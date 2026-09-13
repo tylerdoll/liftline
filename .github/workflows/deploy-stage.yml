@@ -1,0 +1,49 @@
+name: Deploy tested stage
+on:
+  workflow_call:
+    inputs:
+      stage:
+        required: true
+        type: string
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.stage }}
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      STAGE: ${{ inputs.stage }}
+      PREPROD_ACCOUNT: ${{ vars.PREPROD_ACCOUNT }}
+      PROD_ACCOUNT: ${{ vars.PROD_ACCOUNT }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24'
+      - run: npm install --global pnpm@11.19.0
+      - run: pnpm install --frozen-lockfile
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: candidate
+      - run: node --import tsx scripts/verify-manifest.ts
+      - uses: aws-actions/configure-aws-credentials@ff717079ee2060e4bcee96c4779b553acc87447c
+        with:
+          role-to-assume: ${{ vars.DEPLOY_ROLE_ARN }}
+          aws-region: us-west-2
+      - id: deploy
+        run: node --import tsx scripts/deploy.ts "$STAGE"
+      - run: pnpm exec playwright install --with-deps chromium
+      - id: smoke
+        run: pnpm exec playwright test -c playwright.cloud.config.ts
+        env:
+          SMOKE_EMAIL: ${{ secrets.SMOKE_EMAIL }}
+          SMOKE_PASSWORD: ${{ secrets.SMOKE_PASSWORD }}
+          SECOND_SMOKE_EMAIL: ${{ secrets.SECOND_SMOKE_EMAIL }}
+          SECOND_SMOKE_PASSWORD: ${{ secrets.SECOND_SMOKE_PASSWORD }}
+      - if: failure() && (steps.deploy.outcome == 'success' || steps.deploy.outcome == 'failure')
+        run: |
+          if test -f "release/$STAGE-previous.json"; then
+            node --import tsx scripts/deploy.ts "$STAGE" rollback
+          fi
+      - run: node --import tsx scripts/accept-release.ts "$STAGE"
