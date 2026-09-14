@@ -20,7 +20,7 @@ test("lossless legacy import, oversized read path, two reruns, and derived rebui
     await archive.client.send(
       new CreateBucketCommand({
         Bucket: archive.bucket,
-        CreateBucketConfiguration: { LocationConstraint: "us-west-2" },
+        CreateBucketConfiguration: { LocationConstraint: "us-east-2" },
       }),
     );
     const rows: Record<string, any[]> = {

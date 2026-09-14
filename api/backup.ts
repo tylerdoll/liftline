@@ -6,7 +6,7 @@ import {
 import { DynamoStore } from "./dynamo";
 export async function handler(event?: { monitor?: boolean }) {
   const store = new DynamoStore(process.env.TABLE_NAME!);
-  const client = new DynamoDBClient({ region: "us-west-2" });
+  const client = new DynamoDBClient({ region: "us-east-2" });
   if (event?.monitor) {
     const latest = await store.get("SYSTEM", "BACKUP_STATUS");
     if (!latest) throw new Error("No weekly export has been recorded");

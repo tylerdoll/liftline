@@ -11,7 +11,7 @@ execFileSync(
     "release/manifest.json",
     `s3://${out.AssetsBucket}/releases/current.json`,
     "--region",
-    "us-west-2",
+    "us-east-2",
   ],
   { stdio: "inherit" },
 );

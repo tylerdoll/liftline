@@ -30,7 +30,7 @@ jobs:
       - uses: aws-actions/configure-aws-credentials@ff717079ee2060e4bcee96c4779b553acc87447c
         with:
           role-to-assume: ${{ vars.DEPLOY_ROLE_ARN }}
-          aws-region: us-west-2
+          aws-region: us-east-2
       - id: deploy
         run: node --import tsx scripts/deploy.ts "$STAGE"
       - run: pnpm exec playwright install --with-deps chromium

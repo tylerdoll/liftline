@@ -13,7 +13,7 @@ if (!pool || !table || !email)
     "Usage: invite <pool-id> <table> <email> [stable-internal-id]",
   );
 const store = new DynamoStore(table),
-  client = new CognitoIdentityProviderClient({ region: "us-west-2" });
+  client = new CognitoIdentityProviderClient({ region: "us-east-2" });
 const reservationKey = `INVITE#${hash(`${pool}/${email.trim().toLowerCase()}`)}`;
 const reservation = await store.get("SYSTEM", reservationKey);
 if (reservation && providedId && reservation.userId !== providedId)
@@ -78,7 +78,7 @@ try {
 }
 const subject = user.UserAttributes?.find((a) => a.Name === "sub")?.Value;
 if (!subject) throw new Error("Cognito identity missing");
-const PK = `IDENTITY#https://cognito-idp.us-west-2.amazonaws.com/${pool}#${subject}`;
+const PK = `IDENTITY#https://cognito-idp.us-east-2.amazonaws.com/${pool}#${subject}`;
 const existing = await store.get(PK, "PROFILE");
 if (existing && existing.userId !== userId)
   throw new Error("Identity is already bound to a different internal user");

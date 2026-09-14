@@ -16,14 +16,14 @@ const email =
   process.env.ALERT_EMAIL ??
   "replace-before-deploy@example.invalid";
 new RecoveryStack(app, "LiftlineRecovery", {
-  env: { account: preprod, region: "us-west-2" },
+  env: { account: preprod, region: "us-east-2" },
   sourceAccount: prod,
 });
 for (const [stage, account] of [
   ["preprod", preprod],
   ["prod", prod],
 ] as const) {
-  const env = { account, region: "us-west-2" };
+  const env = { account, region: "us-east-2" };
   new DeliveryStack(app, `LiftlineDelivery-${stage}`, {
     env,
     stage,

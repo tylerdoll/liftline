@@ -27,7 +27,7 @@ import * as cloudwatch from "aws-cdk-lib/aws-cloudwatch";
 import * as actions from "aws-cdk-lib/aws-cloudwatch-actions";
 import * as budgets from "aws-cdk-lib/aws-budgets";
 type EnvironmentProps = StackProps & {
-  stage: "preprod" | "prod";
+  stage: "alpha" | "preprod" | "prod";
   email: string;
 };
 function bucket(scope: Construct, id: string, name?: string) {
@@ -121,6 +121,13 @@ export class DataStack extends Stack {
       projectionType: ddb.ProjectionType.KEYS_ONLY,
     });
     this.archive = bucket(this, "PrivateArchive");
+    if (props.stage !== "prod") {
+      this.archive.addLifecycleRule({
+        prefix: "weekly/",
+        expiration: Duration.days(56),
+        noncurrentVersionExpiration: Duration.days(56),
+      });
+    }
     if (props.stage === "prod") {
       const replication = new iam.Role(this, "ArchiveReplication", {
         roleName: "liftline-prod-archive-replication",

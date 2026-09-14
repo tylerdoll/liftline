@@ -13,7 +13,7 @@ export class S3Archive implements Archive {
     if (endpoint && !/^http:\/\/(127\.0\.0\.1|localhost):\d+$/.test(endpoint))
       throw new Error("Emulator must be localhost");
     this.client = new S3Client({
-      region: "us-west-2",
+      region: "us-east-2",
       ...(endpoint
         ? {
             endpoint,
