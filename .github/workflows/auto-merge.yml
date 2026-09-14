@@ -1,0 +1,34 @@
+name: Enable auto-merge
+on:
+  pull_request_target:
+    branches: [main]
+    types: [opened, reopened, synchronize, ready_for_review]
+  workflow_dispatch:
+permissions:
+  contents: write
+  pull-requests: write
+jobs:
+  enable:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+      PR_DRAFT: ${{ github.event.pull_request.draft }}
+    steps:
+      # No checkout or PR code execution in this privileged workflow.
+      # GitHub enforces required checks and branch protection when merging.
+      - name: Enable squash auto-merge
+        shell: bash
+        run: |
+          if [[ -n "$PR_NUMBER" ]]; then
+            if [[ "$PR_DRAFT" != 'true' ]]; then
+              gh pr merge "$PR_NUMBER" --auto --squash
+            fi
+          else
+            gh pr list --base main --state open --json number,isDraft --jq '.[] | select(.isDraft == false) | .number' |
+              while read -r number; do
+                gh pr merge "$number" --auto --squash
+              done
+          fi
