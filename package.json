@@ -17,8 +17,10 @@
     "test:aws": "node --import tsx --test tests/aws.integration.ts tests/migration.integration.ts tests/restore.integration.ts",
     "test:aws-browser": "playwright test -c playwright.aws.config.ts",
     "manifest": "node --import tsx scripts/manifest.ts",
-    "check": "pnpm typecheck && pnpm lint && pnpm test && pnpm build && pnpm synth && pnpm test:unit && pnpm test:aws && pnpm test:browser && pnpm test:aws-browser",
-    "contracts:generate": "node --import tsx scripts/openapi.ts"
+    "check": "pnpm typecheck && pnpm lint && pnpm test && pnpm build && pnpm synth && pnpm test:unit && pnpm test:aws && pnpm test:browser && pnpm test:aws-browser && pnpm test:alpha",
+    "contracts:generate": "node --import tsx scripts/openapi.ts",
+    "synth:alpha": "node --import tsx infra/alpha.ts",
+    "test:alpha": "pnpm synth:alpha && node --import tsx --test tests/alpha-infra.test.ts"
   },
   "dependencies": {
     "@aws-sdk/client-cognito-identity-provider": "3.1131.0",

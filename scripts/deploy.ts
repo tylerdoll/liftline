@@ -12,7 +12,7 @@ if (
 )
   throw new Error("Real account configuration required");
 const aws = (...args: string[]) =>
-  execFileSync("aws", [...args, "--region", "us-west-2"], {
+  execFileSync("aws", [...args, "--region", "us-east-2"], {
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
   });

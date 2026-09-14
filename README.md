@@ -18,6 +18,8 @@ The migrated React interface uses a versioned API, Cognito sign-in, private per-
 
 Run `pnpm install`, install Python dependencies with `python -m pip install -r requirements-test.txt`, and start `python scripts/local-aws.py` in another terminal. After `pnpm exec playwright install chromium`, run `pnpm check` for contract, emulator, browser, build, and infrastructure checks. `pnpm dev:aws` opens the local AWS test host with synthetic authentication; it is not a deployable authentication service.
 
-No AWS environment has been deployed and no live data has been exported or migrated. Release enablement stays off until account setup, real Cognito/IAM checks, backup recovery, and cutover review are complete.
+Alpha uses the isolated AWS Projects setup described below. No live workout data has been exported or migrated. Beta/production release enablement stays off until real Cognito/IAM checks, backup recovery, and cutover review are complete.
 
 See [validation evidence and limitations](docs/validation.md), [baseline coverage](docs/baseline-coverage.md), [architecture](docs/design.md), [deployment](docs/deployment.md), [private cutover](docs/cutover.md), and [recovery](docs/recovery.md).
+
+For the isolated AWS Projects development environment in Ohio, use [alpha setup](docs/alpha.md). Alpha has its own assembly and credentials; it does not deploy beta or production.

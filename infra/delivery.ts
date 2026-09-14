@@ -5,13 +5,13 @@ export class DeliveryStack extends Stack {
   constructor(
     scope: Construct,
     id: string,
-    props: StackProps & { stage: string; repository: string },
+    props: StackProps & {
+      stage: string;
+      repository: string;
+      githubEnabled?: boolean;
+    },
   ) {
     super(scope, id, props);
-    const provider = new iam.OpenIdConnectProvider(this, "GitHub", {
-      url: "https://token.actions.githubusercontent.com",
-      clientIds: ["sts.amazonaws.com"],
-    });
     const boundary = new iam.ManagedPolicy(this, "AppBoundary", {
       managedPolicyName: `liftline-${props.stage}-app-boundary`,
       statements: [
@@ -38,6 +38,29 @@ export class DeliveryStack extends Stack {
       permissionsBoundary: boundary,
     });
     const appRole = `arn:aws:iam::${this.account}:role/LiftlineApp-${props.stage}-*`;
+    execution.addToPolicy(
+      new iam.PolicyStatement({
+        actions: [
+          "cloudwatch:PutMetricAlarm",
+          "cloudwatch:DeleteAlarms",
+          "cloudwatch:DescribeAlarms",
+          "cloudwatch:TagResource",
+          "cloudwatch:UntagResource",
+          "cloudwatch:ListTagsForResource",
+        ],
+        resources: [
+          `arn:aws:cloudwatch:${this.region}:${this.account}:alarm:LiftlineApp-${props.stage}-*`,
+        ],
+      }),
+    );
+    execution.addToPolicy(
+      new iam.PolicyStatement({
+        actions: ["ssm:GetParameter", "ssm:GetParameters"],
+        resources: [
+          `arn:aws:ssm:${this.region}:${this.account}:parameter/cdk-bootstrap/hnb659fds/version`,
+        ],
+      }),
+    );
     execution.addToPolicy(
       new iam.PolicyStatement({
         actions: [
@@ -97,6 +120,12 @@ export class DeliveryStack extends Stack {
         resources: ["*"],
       }),
     );
+    new CfnOutput(this, "ExecutionRole", { value: execution.roleArn });
+    if (props.githubEnabled === false) return;
+    const provider = new iam.OpenIdConnectProvider(this, "GitHub", {
+      url: "https://token.actions.githubusercontent.com",
+      clientIds: ["sts.amazonaws.com"],
+    });
     const role = new iam.Role(this, "Deployment", {
       roleName: `liftline-${props.stage}-github`,
       assumedBy: new iam.WebIdentityPrincipal(
@@ -184,6 +213,5 @@ export class DeliveryStack extends Stack {
       }),
     );
     new CfnOutput(this, "DeploymentRole", { value: role.roleArn });
-    new CfnOutput(this, "ExecutionRole", { value: execution.roleArn });
   }
 }

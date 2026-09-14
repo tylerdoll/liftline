@@ -16,7 +16,7 @@ export class DynamoStore implements Store {
       throw new Error("Emulator must be localhost");
     this.client = DynamoDBDocumentClient.from(
       new DynamoDBClient({
-        region: "us-west-2",
+        region: "us-east-2",
         ...(endpoint
           ? {
               endpoint,

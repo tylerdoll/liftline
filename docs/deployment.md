@@ -2,7 +2,7 @@
 
 ## Current prerequisites
 
-The GitHub repository exists. AWS accounts have not been created. Keep release enablement off until all launch gates are complete. Use two separate accounts in `us-west-2`; the preprod account also contains the isolated recovery bucket, inaccessible to the preprod application and normal delivery role. Creating accounts, accepting terms, billing setup and real deployment are separate user actions.
+Current setup uses an isolated alpha AWS Project in `us-east-2`; see [alpha setup](alpha.md). Beta and production access are not authorized for the agent. The following paired-environment runbook is retained for future owner-managed setup. Keep release enablement off until all launch gates are complete. Use two separate projects in `us-east-2`; the preprod account also contains the isolated recovery bucket, inaccessible to the preprod application and normal delivery role. Creating accounts, accepting terms, billing setup and real deployment are separate user actions.
 
 1. Create accounts, secure administrator access, and confirm billing/free-tier eligibility. Set real `PREPROD_ACCOUNT`, `PROD_ACCOUNT`, and `ALERT_EMAIL` locally and as repository variables. Confirm SNS subscriptions. Budget alerts are notifications, not spending caps.
 2. As administrator, bootstrap CDK in both accounts. Review the synthesized Delivery, Data and Recovery stacks. Create production backup/replication roles before the recovery bucket policy references them; if deploying in phases, bootstrap those roles first, then recovery, then replication. Do not use the normal delivery role for these stacks.
