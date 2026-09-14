@@ -12,3 +12,4 @@ playwright-report/
 release/
 cdk.context.json
 *.log
+.local-python/

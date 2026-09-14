@@ -1,17 +1,237 @@
-import {test} from 'node:test';
-import assert from 'node:assert/strict';
-import {legacy} from './support/legacy';
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { legacy } from "./support/legacy";
 // Keep this suite behind an adapter so the same scenarios can validate AWS.
-const makeClient=legacy;
-const plan={action:'createPlan',name:'Synthetic Contract Plan',days:[{name:'Contract Day',dayOfWeek:1,exercises:[{exerciseId:1,plannedSets:3,repMin:8,repMax:12,perSide:true,supersetGroup:1,supersetPosition:'A',restSeconds:120},{exerciseId:2,plannedSets:3,repMin:8,repMax:12,supersetGroup:1,supersetPosition:'B',restSeconds:120}]}]};
-async function setup(){const c=await makeClient();const response=await c.request(plan);assert.equal(response.status,201);const {planId}=await response.json();const data=await (await c.request()).json();return {...c,planId,dayId:data.plans.find((p:any)=>p.id===planId).days[0].id};}
-function draft(planId:number,dayId:number,date='2040-06-10'){return {planId,dayId,dayName:'Contract Day',workoutDate:date,startedAt:2200000000000,resumedAt:2200000000000,elapsedBeforePause:91,exercises:[{id:1,name:'Synthetic Press',plannedSets:3,repMin:8,repMax:12,perSide:true,supersetGroup:1,supersetPosition:'A',restSeconds:120,sets:[{setNumber:1,reps:10,weight:37},{setNumber:2,reps:'',weight:''}]}]};}
+const makeClient = legacy;
+const plan = {
+  action: "createPlan",
+  name: "Synthetic Contract Plan",
+  days: [
+    {
+      name: "Contract Day",
+      dayOfWeek: 1,
+      exercises: [
+        {
+          exerciseId: 1,
+          plannedSets: 3,
+          repMin: 8,
+          repMax: 12,
+          perSide: true,
+          supersetGroup: 1,
+          supersetPosition: "A",
+          restSeconds: 120,
+        },
+        {
+          exerciseId: 2,
+          plannedSets: 3,
+          repMin: 8,
+          repMax: 12,
+          supersetGroup: 1,
+          supersetPosition: "B",
+          restSeconds: 120,
+        },
+      ],
+    },
+  ],
+};
+async function setup() {
+  const c = await makeClient();
+  const response = await c.request(plan);
+  assert.equal(response.status, 201);
+  const { planId } = await response.json();
+  const data = await (await c.request()).json();
+  return {
+    ...c,
+    planId,
+    dayId: data.plans.find((p: any) => p.id === planId).days[0].id,
+  };
+}
+function draft(planId: number, dayId: number, date = "2040-06-10") {
+  return {
+    planId,
+    dayId,
+    dayName: "Contract Day",
+    workoutDate: date,
+    startedAt: 2200000000000,
+    resumedAt: 2200000000000,
+    elapsedBeforePause: 91,
+    exercises: [
+      {
+        id: 1,
+        name: "Synthetic Press",
+        plannedSets: 3,
+        repMin: 8,
+        repMax: 12,
+        perSide: true,
+        supersetGroup: 1,
+        supersetPosition: "A",
+        restSeconds: 120,
+        sets: [
+          { setNumber: 1, reps: 10, weight: 37 },
+          { setNumber: 2, reps: "", weight: "" },
+        ],
+      },
+    ],
+  };
+}
 
-test('dashboard exposes stable collections and empty performance baseline',async()=>{const c=await makeClient();try{const r=await c.request();assert.equal(r.status,200);const d=await r.json();for(const k of ['exercises','plans','sessions','workoutDrafts'])assert.ok(Array.isArray(d[k]));assert.deepEqual(d.stats,{workouts:0,weeklyVolume:0,streak:0});assert.deepEqual(d.history,{});assert.equal(d.exercises[0].recommendation,'hold');assert.equal(d.exercises[0].recommendedWeight,null);}finally{c.close();}});
-test('plan roundtrip preserves ordered days, supersets, ranges and active selection',async()=>{const c=await setup();try{assert.equal((await c.request({action:'activatePlan',planId:c.planId})).status,200);const d=await(await c.request()).json();const p=d.plans.find((p:any)=>p.id===c.planId);assert.equal(p.isActive,true);assert.equal(p.name,plan.name);assert.equal(p.days[0].dayOfWeek,1);const [a,b]=p.days[0].exercises;assert.equal(a.id,1);assert.equal(b.id,2);assert.equal(a.repMin,8);assert.equal(a.repMax,12);assert.equal(a.perSide,true);assert.equal(a.supersetGroup,b.supersetGroup);assert.equal(a.supersetPosition,'A');assert.equal(b.supersetPosition,'B');assert.equal(a.restSeconds,120);}finally{c.close();}});
-test('draft save, replace, reload and discard preserve partial sets and elapsed time',async()=>{const c=await setup();try{const w=draft(c.planId,c.dayId);const a=await(await c.request({action:'saveWorkoutDraft',workout:w})).json();w.elapsedBeforePause=123;const b=await(await c.request({action:'saveWorkoutDraft',workout:w})).json();assert.equal(a.draftId,b.draftId);const data=await(await c.request()).json();assert.equal(data.workoutDrafts.length,1);assert.equal(data.workoutDrafts[0].elapsedBeforePause,123);assert.deepEqual(data.workoutDrafts[0].exercises,w.exercises);assert.equal(data.sessions.length,0);await c.request({action:'discardWorkoutDraft',draftId:a.draftId});assert.equal((await(await c.request()).json()).workoutDrafts.length,0);}finally{c.close();}});
-test('completion returns history, set details and exact range progression',async()=>{const c=await setup();try{const r=await c.request({action:'logWorkout',planId:c.planId,dayId:c.dayId,workoutDate:'2040-06-10',sets:[{exerciseId:1,setNumber:1,reps:8,weight:37},{exerciseId:1,setNumber:2,reps:12,weight:37}]});assert.equal(r.status,201);const d=await(await c.request()).json();assert.equal(d.sessions.length,1);assert.equal(d.sessions[0].sets.length,2);assert.equal(d.sessions[0].workoutDate,'2040-06-10');assert.equal(d.sessions[0].sets[0].exerciseName,'Synthetic Press');const e=d.exercises.find((e:any)=>e.id===1);assert.equal(e.recommendedWeight,42);assert.equal(e.recommendation,'increase');assert.deepEqual(d.history['1'],[{date:'2040-06-10',weight:37,volume:740}]);}finally{c.close();}});
-for(const reps of [7,13])test(`a set at ${reps} reps outside range decreases by 5 lb, floored at zero`,async()=>{const c=await setup();try{await c.request({action:'logWorkout',planId:c.planId,dayId:c.dayId,workoutDate:'2040-06-10',sets:[{exerciseId:1,setNumber:1,reps,weight:3}]});const d=await(await c.request()).json();const e=d.exercises.find((e:any)=>e.id===1);assert.equal(e.recommendation,'decrease');assert.equal(e.recommendedWeight,0);}finally{c.close();}});
-test('expired draft finalizes valid sets once and retains the original workout date',async()=>{const c=await setup();try{await c.request({action:'saveWorkoutDraft',workout:draft(c.planId,c.dayId,'2040-06-09')});const d=await(await c.request()).json();assert.equal(d.workoutDrafts.length,0);assert.equal(d.sessions.length,1);assert.equal(d.sessions[0].sets.length,1);assert.equal(d.sessions[0].workoutDate,'2040-06-09');assert.equal((await(await c.request()).json()).sessions.length,1);}finally{c.close();}});
-test('expired zero-set draft remains an empty historical session',async()=>{const c=await setup();try{const w=draft(c.planId,c.dayId,'2040-06-09');w.exercises[0].sets=[{setNumber:1,reps:'',weight:''}];await c.request({action:'saveWorkoutDraft',workout:w});const d=await(await c.request()).json();assert.equal(d.sessions.length,1);assert.deepEqual(d.sessions[0].sets,[]);}finally{c.close();}});
-for(const payload of [{action:'nonsense'},{action:'createPlan',name:'',days:[]},{action:'saveWorkoutDraft',workout:null},{action:'logWorkout',sets:[]},{action:'discardWorkoutDraft',draftId:-1}])test(`invalid ${payload.action} gives a client error envelope`,async()=>{const c=await makeClient();try{const r=await c.request(payload);assert.equal(r.status,400);assert.equal(typeof(await r.json()).error,'string');}finally{c.close();}});
+test("dashboard exposes stable collections and empty performance baseline", async () => {
+  const c = await makeClient();
+  try {
+    const r = await c.request();
+    assert.equal(r.status, 200);
+    const d = await r.json();
+    for (const k of ["exercises", "plans", "sessions", "workoutDrafts"])
+      assert.ok(Array.isArray(d[k]));
+    assert.deepEqual(d.stats, { workouts: 0, weeklyVolume: 0, streak: 0 });
+    assert.deepEqual(d.history, {});
+    assert.equal(d.exercises[0].recommendation, "hold");
+    assert.equal(d.exercises[0].recommendedWeight, null);
+  } finally {
+    c.close();
+  }
+});
+test("plan roundtrip preserves ordered days, supersets, ranges and active selection", async () => {
+  const c = await setup();
+  try {
+    assert.equal(
+      (await c.request({ action: "activatePlan", planId: c.planId })).status,
+      200,
+    );
+    const d = await (await c.request()).json();
+    const p = d.plans.find((p: any) => p.id === c.planId);
+    assert.equal(p.isActive, true);
+    assert.equal(p.name, plan.name);
+    assert.equal(p.days[0].dayOfWeek, 1);
+    const [a, b] = p.days[0].exercises;
+    assert.equal(a.id, 1);
+    assert.equal(b.id, 2);
+    assert.equal(a.repMin, 8);
+    assert.equal(a.repMax, 12);
+    assert.equal(a.perSide, true);
+    assert.equal(a.supersetGroup, b.supersetGroup);
+    assert.equal(a.supersetPosition, "A");
+    assert.equal(b.supersetPosition, "B");
+    assert.equal(a.restSeconds, 120);
+  } finally {
+    c.close();
+  }
+});
+test("draft save, replace, reload and discard preserve partial sets and elapsed time", async () => {
+  const c = await setup();
+  try {
+    const w = draft(c.planId, c.dayId);
+    const a = await (
+      await c.request({ action: "saveWorkoutDraft", workout: w })
+    ).json();
+    w.elapsedBeforePause = 123;
+    const b = await (
+      await c.request({ action: "saveWorkoutDraft", workout: w })
+    ).json();
+    assert.equal(a.draftId, b.draftId);
+    const data = await (await c.request()).json();
+    assert.equal(data.workoutDrafts.length, 1);
+    assert.equal(data.workoutDrafts[0].elapsedBeforePause, 123);
+    assert.deepEqual(data.workoutDrafts[0].exercises, w.exercises);
+    assert.equal(data.sessions.length, 0);
+    await c.request({ action: "discardWorkoutDraft", draftId: a.draftId });
+    assert.equal((await (await c.request()).json()).workoutDrafts.length, 0);
+  } finally {
+    c.close();
+  }
+});
+test("completion returns history, set details and exact range progression", async () => {
+  const c = await setup();
+  try {
+    const r = await c.request({
+      action: "logWorkout",
+      planId: c.planId,
+      dayId: c.dayId,
+      workoutDate: "2040-06-10",
+      sets: [
+        { exerciseId: 1, setNumber: 1, reps: 8, weight: 37 },
+        { exerciseId: 1, setNumber: 2, reps: 12, weight: 37 },
+      ],
+    });
+    assert.equal(r.status, 201);
+    const d = await (await c.request()).json();
+    assert.equal(d.sessions.length, 1);
+    assert.equal(d.sessions[0].sets.length, 2);
+    assert.equal(d.sessions[0].workoutDate, "2040-06-10");
+    assert.equal(d.sessions[0].sets[0].exerciseName, "Synthetic Press");
+    const e = d.exercises.find((e: any) => e.id === 1);
+    assert.equal(e.recommendedWeight, 42);
+    assert.equal(e.recommendation, "increase");
+    assert.deepEqual(d.history["1"], [
+      { date: "2040-06-10", weight: 37, volume: 740 },
+    ]);
+  } finally {
+    c.close();
+  }
+});
+for (const reps of [7, 13])
+  test(`a set at ${reps} reps outside range decreases by 5 lb, floored at zero`, async () => {
+    const c = await setup();
+    try {
+      await c.request({
+        action: "logWorkout",
+        planId: c.planId,
+        dayId: c.dayId,
+        workoutDate: "2040-06-10",
+        sets: [{ exerciseId: 1, setNumber: 1, reps, weight: 3 }],
+      });
+      const d = await (await c.request()).json();
+      const e = d.exercises.find((e: any) => e.id === 1);
+      assert.equal(e.recommendation, "decrease");
+      assert.equal(e.recommendedWeight, 0);
+    } finally {
+      c.close();
+    }
+  });
+test("expired draft finalizes valid sets once and retains the original workout date", async () => {
+  const c = await setup();
+  try {
+    await c.request({
+      action: "saveWorkoutDraft",
+      workout: draft(c.planId, c.dayId, "2040-06-09"),
+    });
+    const d = await (await c.request()).json();
+    assert.equal(d.workoutDrafts.length, 0);
+    assert.equal(d.sessions.length, 1);
+    assert.equal(d.sessions[0].sets.length, 1);
+    assert.equal(d.sessions[0].workoutDate, "2040-06-09");
+    assert.equal((await (await c.request()).json()).sessions.length, 1);
+  } finally {
+    c.close();
+  }
+});
+test("expired zero-set draft remains an empty historical session", async () => {
+  const c = await setup();
+  try {
+    const w = draft(c.planId, c.dayId, "2040-06-09");
+    w.exercises[0].sets = [{ setNumber: 1, reps: "", weight: "" }];
+    await c.request({ action: "saveWorkoutDraft", workout: w });
+    const d = await (await c.request()).json();
+    assert.equal(d.sessions.length, 1);
+    assert.deepEqual(d.sessions[0].sets, []);
+  } finally {
+    c.close();
+  }
+});
+for (const payload of [
+  { action: "nonsense" },
+  { action: "createPlan", name: "", days: [] },
+  { action: "saveWorkoutDraft", workout: null },
+  { action: "logWorkout", sets: [] },
+  { action: "discardWorkoutDraft", draftId: -1 },
+])
+  test(`invalid ${payload.action} gives a client error envelope`, async () => {
+    const c = await makeClient();
+    try {
+      const r = await c.request(payload);
+      assert.equal(r.status, 400);
+      assert.equal(typeof (await r.json()).error, "string");
+    } finally {
+      c.close();
+    }
+  });
