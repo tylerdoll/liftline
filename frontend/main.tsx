@@ -1,6 +1,14 @@
-import { useEffect, useState } from "react";
+import { ThemeProvider, CssBaseline } from "@mui/material";
+import { theme } from "./theme";
+import "@fontsource/roboto/latin-300.css";
+import "@fontsource/roboto/latin-400.css";
+import "@fontsource/roboto/latin-500.css";
+import "@fontsource/roboto/latin-700.css";
+import { Button, Typography, Alert } from "@mui/material";
+import { Field } from "./ui";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
-import Home from "./page";
+const Home = lazy(() => import("./page"));
 import {
   api,
   bindUser,
@@ -83,35 +91,53 @@ function App() {
   if (!ready)
     return (
       <main className="page-wrap">
-        <h1>Liftline</h1>
-        <p>Loading…</p>
+        <Typography component="h1" variant="h3" gutterBottom>
+          Liftline
+        </Typography>
+        <Typography component="p" variant="body2" color="text.secondary">
+          Loading…
+        </Typography>
       </main>
     );
   if (!me)
     return (
       <main className="page-wrap">
-        <h1>Liftline</h1>
-        <p>Your private training log.</p>
-        {error && <p role="alert">{error}</p>}
-        <button className="primary-button" onClick={() => void attempt(signIn)}>
+        <Typography component="h1" variant="h3" gutterBottom>
+          Liftline
+        </Typography>
+        <Typography component="p" variant="body2" color="text.secondary">
+          Your private training log.
+        </Typography>
+        {error && <Alert severity="error">{error}</Alert>}
+        <Button
+          variant="contained"
+          type="button"
+          className="primary-button"
+          onClick={() => void attempt(signIn)}
+        >
           Sign in
-        </button>
+        </Button>
       </main>
     );
   if (!me.timezone)
     return (
       <main className="page-wrap">
-        <h1>Confirm your timezone</h1>
-        <p>
+        <Typography component="h1" variant="h3" gutterBottom>
+          Confirm your timezone
+        </Typography>
+        <Typography component="p" variant="body2" color="text.secondary">
           Paused sessions close at midnight in this timezone, including daylight
           saving changes.
-        </p>
-        <input
+        </Typography>
+        <Field
           aria-label="IANA timezone"
+          label="IANA timezone"
           value={zone}
           onChange={(e) => setZone(e.target.value)}
         />
-        <button
+        <Button
+          variant="outlined"
+          type="button"
           onClick={() =>
             void attempt(async () => {
               const p = await api(
@@ -125,15 +151,17 @@ function App() {
           }
         >
           Confirm timezone
-        </button>
-        {error && <p role="alert">{error}</p>}
+        </Button>
+        {error && <Alert severity="error">{error}</Alert>}
       </main>
     );
   return (
     <>
       <div className="account-controls">
         <span role="status">{state}</span>
-        <button
+        <Button
+          variant="outlined"
+          type="button"
           onClick={() =>
             void attempt(async () => {
               setTools(!tools);
@@ -145,19 +173,29 @@ function App() {
           }
         >
           Account, sharing & recovery
-        </button>
-        <button onClick={signOut}>Sign out</button>
+        </Button>
+        <Button variant="outlined" type="button" onClick={signOut}>
+          Sign out
+        </Button>
       </div>
       {error && (
-        <div className="error-banner" role="alert">
+        <Alert severity="error" className="error-banner">
           {error}
-          <button onClick={() => void attempt(signIn)}>Sign in again</button>
-        </div>
+          <Button
+            variant="outlined"
+            type="button"
+            onClick={() => void attempt(signIn)}
+          >
+            Sign in again
+          </Button>
+        </Alert>
       )}
       {new URLSearchParams(location.hash.slice(1)).has("share") && (
-        <aside className="error-banner">
+        <Alert severity="info" className="error-banner">
           Copy this shared plan or workout template into your account?
-          <button
+          <Button
+            variant="outlined"
+            type="button"
             onClick={() =>
               void attempt(async () => {
                 await api("shares/redeem", "POST", {
@@ -171,29 +209,35 @@ function App() {
             }
           >
             Copy template
-          </button>
-        </aside>
+          </Button>
+        </Alert>
       )}
       {pending.length > 0 && (
-        <aside className="error-banner">
+        <Alert severity="info" className="error-banner">
           {pending.length} local draft(s) need recovery. Open account tools to
           review and sync them.
-        </aside>
+        </Alert>
       )}
       {tools && (
-        <section className="page-wrap">
-          <h2>Account tools</h2>
-          <p>
+        <section className="page-wrap account-tools">
+          <Typography component="h2" variant="h5" gutterBottom>
+            Account tools
+          </Typography>
+          <Typography component="p" variant="body2" color="text.secondary">
             Timezone: {me.timezone}. Shared copies never count as completed
             workouts.
-          </p>
-          <h3>Local recovery</h3>
+          </Typography>
+          <Typography component="h3" variant="h6" gutterBottom>
+            Local recovery
+          </Typography>
           {pending.map((e) => (
             <div key={e.key}>
               <strong>
                 {e.latest.dayName} · {e.latest.workoutDate}
               </strong>
-              <button
+              <Button
+                variant="outlined"
+                type="button"
                 onClick={() =>
                   void attempt(async () => {
                     await outbox.flush(e.key);
@@ -202,8 +246,10 @@ function App() {
                 }
               >
                 Retry sync
-              </button>
-              <button
+              </Button>
+              <Button
+                variant="outlined"
+                type="button"
                 onClick={() => {
                   const blob = new Blob([JSON.stringify(e, null, 2)], {
                       type: "application/json",
@@ -217,8 +263,10 @@ function App() {
                 }}
               >
                 Download local copy
-              </button>
-              <button
+              </Button>
+              <Button
+                variant="outlined"
+                type="button"
                 onClick={() =>
                   void attempt(async () => {
                     if (
@@ -243,10 +291,12 @@ function App() {
                 }
               >
                 Recover as a new draft
-              </button>
+              </Button>
             </div>
           ))}
-          <h3>Custom exercise</h3>
+          <Typography component="h3" variant="h6" gutterBottom>
+            Custom exercise
+          </Typography>
           <form
             onSubmit={(e) => {
               e.preventDefault();
@@ -269,18 +319,36 @@ function App() {
               });
             }}
           >
-            <input name="name" aria-label="Exercise name" required />
-            <input name="muscle" aria-label="Muscle" required />
-            <input name="equipment" aria-label="Equipment" required />
-            <button>Add private exercise</button>
+            <Field
+              name="name"
+              aria-label="Exercise name"
+              label="Exercise name"
+              required
+            />
+            <Field name="muscle" aria-label="Muscle" label="Muscle" required />
+            <Field
+              name="equipment"
+              aria-label="Equipment"
+              label="Equipment"
+              required
+            />
+            <Button variant="contained" type="submit">
+              Add private exercise
+            </Button>
           </form>
-          <h3>Share a copy for 7 days</h3>
+          <Typography component="h3" variant="h6" gutterBottom>
+            Share a copy for 7 days
+          </Typography>
           {plans.map((p) => (
             <div key={p.id}>
               {p.name}
-              <button onClick={() => void attempt(() => share("PLAN", p.id))}>
+              <Button
+                variant="outlined"
+                type="button"
+                onClick={() => void attempt(() => share("PLAN", p.id))}
+              >
                 Share plan
-              </button>
+              </Button>
             </div>
           ))}
           {sessions
@@ -288,26 +356,32 @@ function App() {
             .map((s) => (
               <div key={s.id}>
                 {s.dayName} · {s.workoutDate}
-                <button
+                <Button
+                  variant="outlined"
+                  type="button"
                   onClick={() => void attempt(() => share("SESSION", s.id))}
                 >
                   Share workout template
-                </button>
+                </Button>
               </div>
             ))}
           {link && (
             <label>
               Private link
-              <input readOnly value={link} onFocus={(e) => e.target.select()} />
+              <Field readOnly value={link} onFocus={(e) => e.target.select()} />
             </label>
           )}
-          <h3>Existing links</h3>
+          <Typography component="h3" variant="h6" gutterBottom>
+            Existing links
+          </Typography>
           {shares.map((s) => (
             <div key={s.id}>
               Expires {new Date(s.expiresAt).toLocaleString()} ·{" "}
               {s.revoked ? "Revoked" : "Active"}
               {!s.revoked && (
-                <button
+                <Button
+                  variant="outlined"
+                  type="button"
                   onClick={() =>
                     void attempt(async () => {
                       await api(
@@ -320,14 +394,27 @@ function App() {
                   }
                 >
                   Revoke link
-                </button>
+                </Button>
               )}
             </div>
           ))}
         </section>
       )}
-      <Home refreshSignal={version} />
+      <Suspense
+        fallback={
+          <Typography role="status" sx={{ p: 3 }}>
+            Loading your training log…
+          </Typography>
+        }
+      >
+        <Home refreshSignal={version} />
+      </Suspense>
     </>
   );
 }
-createRoot(document.getElementById("root")!).render(<App />);
+createRoot(document.getElementById("root")!).render(
+  <ThemeProvider theme={theme}>
+    <CssBaseline />
+    <App />
+  </ThemeProvider>,
+);
