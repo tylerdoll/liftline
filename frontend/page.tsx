@@ -1,4 +1,17 @@
-"use client";
+import {
+  Button,
+  IconButton,
+  Card,
+  Paper,
+  CircularProgress,
+  Typography,
+  Chip,
+  Alert,
+  Snackbar,
+  LinearProgress,
+} from "@mui/material";
+import { Field, SelectField } from "./ui";
+import { AppDialog } from "./dialog";
 import {
   legacyFetch as fetch,
   saveDraft,
@@ -407,18 +420,21 @@ export default function Home({
 
   return (
     <div className="app-shell">
-      <aside className="sidebar">
+      <Paper component="aside" square elevation={0} className="sidebar">
         <Brand />
         <nav className="side-nav" aria-label="Primary navigation">
           {nav.map((item) => (
-            <button
+            <Button
+              aria-pressed={view === item.id}
+              variant={view === item.id ? "contained" : "outlined"}
+              type="button"
               key={item.id}
               className={view === item.id ? "nav-item active" : "nav-item"}
               onClick={() => setView(item.id)}
             >
               <span aria-hidden="true">{item.mark}</span>
               {item.label}
-            </button>
+            </Button>
           ))}
         </nav>
         <div className="sidebar-foot">
@@ -428,7 +444,7 @@ export default function Home({
             <small>Auto-progression is on</small>
           </div>
         </div>
-      </aside>
+      </Paper>
 
       <main className="main-content">
         <header className="topbar">
@@ -442,16 +458,19 @@ export default function Home({
               day: "numeric",
             }).format(new Date())}
           </div>
-          <button className="profile-button" aria-label="Profile">
-            ●
-          </button>
         </header>
 
         {error ? (
-          <div className="error-banner">
+          <Alert severity="error" className="error-banner">
             {error}
-            <button onClick={() => void loadData()}>Try again</button>
-          </div>
+            <Button
+              variant="outlined"
+              type="button"
+              onClick={() => void loadData()}
+            >
+              Try again
+            </Button>
+          </Alert>
         ) : null}
         {data && view === "today" && (
           <TodayView
@@ -483,14 +502,17 @@ export default function Home({
 
       <nav className="mobile-nav" aria-label="Mobile navigation">
         {nav.map((item) => (
-          <button
+          <Button
+            aria-pressed={view === item.id}
+            variant={view === item.id ? "contained" : "outlined"}
+            type="button"
             key={item.id}
             className={view === item.id ? "active" : ""}
             onClick={() => setView(item.id)}
           >
-            <span>{item.mark}</span>
+            <span aria-hidden="true">{item.mark}</span>
             {item.label}
-          </button>
+          </Button>
         ))}
       </nav>
 
@@ -524,12 +546,16 @@ export default function Home({
           onClose={() => setSelectedSession(null)}
         />
       )}
-      {toast ? (
-        <div className="toast" role="status">
-          <span>✓</span>
+      <Snackbar
+        open={
+          Boolean(toast) && !builderOpen && !activeWorkout && !selectedSession
+        }
+        anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
+      >
+        <Alert severity="success" role="status">
           {toast}
-        </div>
-      ) : null}
+        </Alert>
+      </Snackbar>
     </div>
   );
 }
@@ -547,8 +573,10 @@ function LoadingScreen() {
   return (
     <div className="loading-screen">
       <Brand />
-      <div className="loader" />
-      <p>Setting up your training log…</p>
+      <CircularProgress className="loader" />
+      <Typography component="p" variant="body2" color="text.secondary">
+        Setting up your training log…
+      </Typography>
     </div>
   );
 }
@@ -593,25 +621,31 @@ function TodayView({
             <span className="kicker">
               <span /> PAUSED TODAY
             </span>
-            <h2>{workoutDraft.dayName}</h2>
-            <p>
+            <Typography component="h2" variant="h5" gutterBottom>
+              {workoutDraft.dayName}
+            </Typography>
+            <Typography component="p" variant="body2" color="text.secondary">
               {completedDraftSets} of {totalDraftSets} sets entered ·{" "}
               {formatElapsed(workoutDraft.elapsedBeforePause)} active time
-            </p>
+            </Typography>
           </div>
           <div className="paused-workout-actions">
-            <button
+            <Button
+              variant="contained"
+              type="button"
               className="primary-button"
               onClick={() => onResume(workoutDraft)}
             >
               Resume workout<span>→</span>
-            </button>
-            <button
+            </Button>
+            <Button
+              variant="outlined"
+              type="button"
               className="text-button"
               onClick={() => onDiscard(workoutDraft)}
             >
               Discard
-            </button>
+            </Button>
           </div>
         </section>
       ) : null}
@@ -621,48 +655,67 @@ function TodayView({
             <span /> NEXT SESSION ·{" "}
             {activePlan?.name.toUpperCase() ?? "NO ACTIVE PLAN"}
           </div>
-          <h1>
+          <Typography component="h1" variant="h3" gutterBottom>
             Ready for
             <br />
             <em>the next line?</em>
-          </h1>
-          <p>
+          </Typography>
+          <Typography component="p" variant="body2" color="text.secondary">
             Your targets are set from your last session. Hit every planned set
             in its programmed rep range and the line moves up.
-          </p>
+          </Typography>
           {workoutDraft ? (
             <div className="hero-actions">
-              <button
+              <Button
+                variant="contained"
+                type="button"
                 className="primary-button"
                 onClick={() => onResume(workoutDraft)}
               >
                 Resume {workoutDraft.dayName}
                 <span>→</span>
-              </button>
-              <button
+              </Button>
+              <Button
+                variant="outlined"
+                type="button"
                 className="text-button"
                 onClick={() => onDiscard(workoutDraft)}
               >
                 Discard paused workout
-              </button>
+              </Button>
             </div>
           ) : day ? (
             <div className="hero-actions">
-              <button className="primary-button" onClick={() => onStart(day)}>
+              <Button
+                variant="contained"
+                type="button"
+                className="primary-button"
+                onClick={() => onStart(day)}
+              >
                 Start {day.name}
                 <span>→</span>
-              </button>
-              <button className="text-button" onClick={onOpenPlans}>
+              </Button>
+              <Button
+                variant="outlined"
+                type="button"
+                className="text-button"
+                onClick={onOpenPlans}
+              >
                 View schedule
-              </button>
+              </Button>
             </div>
           ) : (
-            <button className="primary-button" onClick={onOpenPlans}>
+            <Button
+              variant="contained"
+              type="button"
+              className="primary-button"
+              onClick={onOpenPlans}
+            >
               Build your first plan<span>→</span>
-            </button>
+            </Button>
           )}
         </div>
-        <div className="session-card">
+        <Card variant="outlined" className="session-card">
           <div className="session-card-head">
             <span>
               {day
@@ -671,7 +724,9 @@ function TodayView({
             </span>
             <small>{day?.exercises.length ?? 0} movements</small>
           </div>
-          <h2>{day?.name ?? "Plan a workout"}</h2>
+          <Typography component="h2" variant="h5" gutterBottom>
+            {day?.name ?? "Plan a workout"}
+          </Typography>
           <div className="session-list">
             {day?.exercises.slice(0, 6).map((exercise, index) => (
               <div className="session-row" key={exercise.id}>
@@ -694,7 +749,7 @@ function TodayView({
               </div>
             )}
           </div>
-        </div>
+        </Card>
       </section>
 
       <section className="stats-row" aria-label="Training stats">
@@ -720,9 +775,13 @@ function TodayView({
         <div className="section-heading">
           <div>
             <span className="section-index">01</span>
-            <h2>What changed</h2>
+            <Typography component="h2" variant="h5" gutterBottom>
+              What changed
+            </Typography>
           </div>
-          <p>Recommendations from your latest completed sets.</p>
+          <Typography component="p" variant="body2" color="text.secondary">
+            Recommendations from your latest completed sets.
+          </Typography>
         </div>
         <div className="recommendation-grid">
           {day?.exercises.slice(0, 3).map((exercise) => (
@@ -752,11 +811,15 @@ function StatCard({
   accent?: boolean;
 }) {
   return (
-    <article className={accent ? "stat-card accent" : "stat-card"}>
+    <Card
+      component="article"
+      variant="outlined"
+      className={accent ? "stat-card accent" : "stat-card"}
+    >
       <small>{label}</small>
       <strong>{value}</strong>
       <span>{detail}</span>
-    </article>
+    </Card>
   );
 }
 
@@ -773,26 +836,51 @@ function RecommendationBadge({
     decrease: compact ? "↓" : "Decrease",
     hold: compact ? "—" : "Establish",
   };
-  return <span className={`recommendation-badge ${kind}`}>{labels[kind]}</span>;
+  return (
+    <Chip
+      size="small"
+      label={labels[kind]}
+      aria-label={
+        compact
+          ? { increase: "Increase", decrease: "Decrease", hold: "Establish" }[
+              kind
+            ]
+          : undefined
+      }
+      color={
+        kind === "increase"
+          ? "success"
+          : kind === "decrease"
+            ? "warning"
+            : "default"
+      }
+    />
+  );
 }
 
 function RecommendationCard({ exercise }: { exercise: Exercise }) {
   return (
-    <article className="recommendation-card">
+    <Card
+      component="article"
+      variant="outlined"
+      className="recommendation-card"
+    >
       <div className="card-top">
-        <span className="muscle-pill">{exercise.muscle}</span>
+        <Chip size="small" variant="outlined" label={exercise.muscle} />
         <RecommendationBadge exercise={exercise} />
       </div>
-      <h3>{exercise.name}</h3>
+      <Typography component="h3" variant="h6" gutterBottom>
+        {exercise.name}
+      </Typography>
       <div className="load-shift">
         <span>{formatWeight(exercise.lastWeight)}</span>
         <b>→</b>
         <strong>{formatWeight(exercise.recommendedWeight)}</strong>
       </div>
-      <p>
+      <Typography component="p" variant="body2" color="text.secondary">
         {exercise.reason ?? "Complete a set to establish your training line."}
-      </p>
-    </article>
+      </Typography>
+    </Card>
   );
 }
 
@@ -823,15 +911,22 @@ function PlansView({
           <div className="kicker">
             <span /> THIS WEEK · {weekLabel}
           </div>
-          <h1>Your plans</h1>
-          <p>
+          <Typography component="h1" variant="h3" gutterBottom>
+            Your plans
+          </Typography>
+          <Typography component="p" variant="body2" color="text.secondary">
             Completed sessions stay on your line. Each Monday starts a fresh
             training week.
-          </p>
+          </Typography>
         </div>
-        <button className="primary-button" onClick={onCreate}>
+        <Button
+          variant="contained"
+          type="button"
+          className="primary-button"
+          onClick={onCreate}
+        >
           Create plan<span>＋</span>
-        </button>
+        </Button>
       </div>
       <div className="plan-stack">
         {plans.map((plan) => {
@@ -844,7 +939,9 @@ function PlansView({
             weekSessions.map((session) => session.dayId),
           );
           return (
-            <article
+            <Card
+              component="article"
+              variant="outlined"
               className={plan.isActive ? "plan-card active" : "plan-card"}
               key={plan.id}
             >
@@ -859,42 +956,51 @@ function PlansView({
                       "SAVED PLAN"
                     )}
                   </div>
-                  <h2>{plan.name}</h2>
-                  <p>
+                  <Typography component="h2" variant="h5" gutterBottom>
+                    {plan.name}
+                  </Typography>
+                  <Typography
+                    component="p"
+                    variant="body2"
+                    color="text.secondary"
+                  >
                     {completedDays.size}/{plan.days.length} complete this week ·{" "}
                     {plan.days.reduce(
                       (sum, day) => sum + day.exercises.length,
                       0,
                     )}{" "}
                     movements
-                  </p>
+                  </Typography>
                 </div>
                 {!plan.isActive && (
-                  <button
+                  <Button
+                    variant="outlined"
+                    type="button"
                     className="secondary-button"
                     onClick={() => onActivate(plan.id)}
                   >
                     Make active
-                  </button>
+                  </Button>
                 )}
               </div>
-              <div
-                className="week-progress"
+              <LinearProgress
+                variant="determinate"
+                value={
+                  plan.days.length
+                    ? (completedDays.size / plan.days.length) * 100
+                    : 0
+                }
                 aria-label={`${completedDays.size} of ${plan.days.length} workouts complete`}
-              >
-                <i
-                  style={{
-                    width: `${plan.days.length ? (completedDays.size / plan.days.length) * 100 : 0}%`,
-                  }}
-                />
-              </div>
+              />
               <div className="schedule-grid">
                 {plan.days.map((day) => {
                   const session = weekSessions.find(
                     (item) => item.dayId === day.id,
                   );
                   return (
-                    <button
+                    <Button
+                      variant="outlined"
+                      type="button"
                       className={
                         session ? "day-card completed" : "day-card incomplete"
                       }
@@ -935,11 +1041,11 @@ function PlansView({
                           ? `View ${dateLabel(session.workoutDate)} session →`
                           : "Start session →"}
                       </span>
-                    </button>
+                    </Button>
                   );
                 })}
               </div>
-            </article>
+            </Card>
           );
         })}
         {!plans.length && (
@@ -972,8 +1078,12 @@ function ExerciseLibrary({ exercises }: { exercises: Exercise[] }) {
           <div className="kicker">
             <span /> MOVEMENT LIBRARY
           </div>
-          <h1>Exercises</h1>
-          <p>Find the right movement by target muscle and equipment.</p>
+          <Typography component="h1" variant="h3" gutterBottom>
+            Exercises
+          </Typography>
+          <Typography component="p" variant="body2" color="text.secondary">
+            Find the right movement by target muscle and equipment.
+          </Typography>
         </div>
         <div className="exercise-count">
           {filtered.length}
@@ -983,7 +1093,7 @@ function ExerciseLibrary({ exercises }: { exercises: Exercise[] }) {
       <div className="library-tools">
         <label className="search-box">
           <span>⌕</span>
-          <input
+          <Field
             value={search}
             onChange={(event) => setSearch(event.target.value)}
             placeholder="Search exercises"
@@ -991,31 +1101,41 @@ function ExerciseLibrary({ exercises }: { exercises: Exercise[] }) {
         </label>
         <div className="filter-chips" aria-label="Filter exercises by muscle">
           {muscles.map((item) => (
-            <button
+            <Button
+              aria-pressed={muscle === item}
+              variant={muscle === item ? "contained" : "outlined"}
+              type="button"
               key={item}
               className={muscle === item ? "active" : ""}
               onClick={() => setMuscle(item)}
             >
               {item}
-            </button>
+            </Button>
           ))}
         </div>
       </div>
       <div className="exercise-grid">
         {filtered.map((exercise) => (
-          <article className="exercise-card" key={exercise.id}>
+          <Card
+            component="article"
+            variant="outlined"
+            className="exercise-card"
+            key={exercise.id}
+          >
             <div className="exercise-card-mark">
               {exercise.muscle.slice(0, 2).toUpperCase()}
             </div>
             <div>
-              <span className="muscle-pill">{exercise.muscle}</span>
-              <h3>{exercise.name}</h3>
-              <p>
+              <Chip size="small" variant="outlined" label={exercise.muscle} />
+              <Typography component="h3" variant="h6" gutterBottom>
+                {exercise.name}
+              </Typography>
+              <Typography component="p" variant="body2" color="text.secondary">
                 {exercise.equipment} · Goal {formatRepRange(exercise)} reps
-              </p>
+              </Typography>
             </div>
             <RecommendationBadge exercise={exercise} />
-          </article>
+          </Card>
         ))}
       </div>
     </div>
@@ -1041,10 +1161,15 @@ function ProgressView({ data }: { data: DashboardData }) {
           <div className="kicker">
             <span /> PROGRESS SIGNALS
           </div>
-          <h1>Your line</h1>
-          <p>See the work compound, one session at a time.</p>
+          <Typography component="h1" variant="h3" gutterBottom>
+            Your line
+          </Typography>
+          <Typography component="p" variant="body2" color="text.secondary">
+            See the work compound, one session at a time.
+          </Typography>
         </div>
-        <select
+        <SelectField
+          aria-label="Exercise history"
           className="select-control"
           value={selectedId}
           onChange={(event) => setSelectedId(event.target.value)}
@@ -1054,14 +1179,16 @@ function ProgressView({ data }: { data: DashboardData }) {
               {item.name}
             </option>
           ))}
-        </select>
+        </SelectField>
       </div>
       <div className="progress-layout">
-        <article className="chart-card">
+        <Card component="article" variant="outlined" className="chart-card">
           <div className="chart-head">
             <div>
               <small>Top working weight</small>
-              <h2>{exercise?.name ?? "Exercise"}</h2>
+              <Typography component="h2" variant="h5" gutterBottom>
+                {exercise?.name ?? "Exercise"}
+              </Typography>
             </div>
             <div className="chart-gain">
               +{Math.max(0, last - first)} lb
@@ -1090,29 +1217,34 @@ function ProgressView({ data }: { data: DashboardData }) {
               </div>
             )}
           </div>
-        </article>
+        </Card>
         <div className="insight-stack">
-          <article className="insight-card lime">
+          <Card
+            component="article"
+            variant="outlined"
+            className="insight-card lime"
+          >
             <small>NEXT TARGET</small>
             <strong>{formatWeight(exercise?.recommendedWeight)}</strong>
             <span>for {formatRepRange(exercise ?? {})} reps</span>
-            <p>{exercise?.reason}</p>
-          </article>
-          <article className="insight-card">
+            <Typography component="p" variant="body2" color="text.secondary">
+              {exercise?.reason}
+            </Typography>
+          </Card>
+          <Card component="article" variant="outlined" className="insight-card">
             <small>TOTAL VOLUME</small>
             <strong>{data.stats.weeklyVolume.toLocaleString()}</strong>
             <span>lb this week</span>
-            <div className="mini-rule">
-              <i style={{ width: "68%" }} />
-            </div>
-          </article>
+          </Card>
         </div>
       </div>
       <section className="section-block compact">
         <div className="section-heading">
           <div>
             <span className="section-index">02</span>
-            <h2>Recent work</h2>
+            <Typography component="h2" variant="h5" gutterBottom>
+              Recent work
+            </Typography>
           </div>
         </div>
         <div className="history-table">
@@ -1139,11 +1271,15 @@ function ProgressView({ data }: { data: DashboardData }) {
 
 function EmptyPanel({ title, text }: { title: string; text: string }) {
   return (
-    <div className="empty-panel">
+    <Paper variant="outlined" className="empty-panel">
       <span>＋</span>
-      <h3>{title}</h3>
-      <p>{text}</p>
-    </div>
+      <Typography component="h3" variant="h6" gutterBottom>
+        {title}
+      </Typography>
+      <Typography component="p" variant="body2" color="text.secondary">
+        {text}
+      </Typography>
+    </Paper>
   );
 }
 
@@ -1261,29 +1397,30 @@ function PlanBuilder({
 
   const selected = dayExercises[activeDay] ?? [];
   return (
-    <div
-      className="overlay"
-      role="dialog"
-      aria-modal="true"
-      aria-label="Create workout plan"
-    >
+    <AppDialog open onClose={onClose} aria-label="Create workout plan">
       <div className="builder-panel">
         <div className="modal-head">
           <div>
             <span className="kicker">
               <span /> NEW TRAINING SYSTEM
             </span>
-            <h2>Create a plan</h2>
+            <Typography component="h2" variant="h5" gutterBottom>
+              Create a plan
+            </Typography>
           </div>
-          <button className="close-button" onClick={onClose} aria-label="Close">
+          <IconButton
+            className="close-button"
+            onClick={onClose}
+            aria-label="Close"
+          >
             ×
-          </button>
+          </IconButton>
         </div>
         <div className="builder-body">
           <div className="builder-column setup-column">
             <label className="field-label">
               Plan name
-              <input
+              <Field
                 className="text-control"
                 value={name}
                 onChange={(event) => setName(event.target.value)}
@@ -1295,32 +1432,39 @@ function PlanBuilder({
                 {DAYS.slice(1).map((label, index) => {
                   const day = index + 1;
                   return (
-                    <button
+                    <Button
+                      aria-pressed={selectedDays.includes(day)}
+                      variant={
+                        selectedDays.includes(day) ? "contained" : "outlined"
+                      }
+                      type="button"
                       key={label}
                       className={selectedDays.includes(day) ? "active" : ""}
                       onClick={() => toggleDay(day)}
                     >
-                      <span>{label.slice(0, 1)}</span>
                       {label.slice(0, 3)}
-                    </button>
+                    </Button>
                   );
                 })}
               </div>
             </div>
             <div className="workout-tabs">
               {selectedDays.map((day, index) => (
-                <button
+                <Button
+                  aria-pressed={activeDay === day}
+                  variant={activeDay === day ? "contained" : "outlined"}
+                  type="button"
                   key={day}
                   className={activeDay === day ? "active" : ""}
                   onClick={() => setActiveDay(day)}
                 >
-                  <small>{displayDay(day)}</small>Workout{" "}
+                  <small>{displayDay(day)}</small> Workout{" "}
                   {String.fromCharCode(65 + index)}
-                </button>
+                </Button>
               ))}
             </div>
             <div className="superset-toggle">
-              <input
+              <Field
                 id={`superset-toggle-${activeDay}`}
                 type="checkbox"
                 checked={Boolean(supersetDays[activeDay])}
@@ -1354,20 +1498,30 @@ function PlanBuilder({
                       <small>{exercise.muscle}</small>
                     </div>
                     <div className="stepper">
-                      <button onClick={() => changeSets(item.exerciseId, -1)}>
+                      <Button
+                        variant="outlined"
+                        type="button"
+                        onClick={() => changeSets(item.exerciseId, -1)}
+                      >
                         −
-                      </button>
+                      </Button>
                       <span>{item.plannedSets} sets</span>
-                      <button onClick={() => changeSets(item.exerciseId, 1)}>
+                      <Button
+                        variant="outlined"
+                        type="button"
+                        onClick={() => changeSets(item.exerciseId, 1)}
+                      >
                         ＋
-                      </button>
+                      </Button>
                     </div>
-                    <button
+                    <Button
+                      variant="outlined"
+                      type="button"
                       className="remove-button"
                       onClick={() => removeExercise(item.exerciseId)}
                     >
                       ×
-                    </button>
+                    </Button>
                   </div>
                 );
               })}
@@ -1386,10 +1540,11 @@ function PlanBuilder({
               </div>
               <label className="search-box small">
                 <span>⌕</span>
-                <input
+                <Field
                   value={search}
                   onChange={(event) => setSearch(event.target.value)}
                   placeholder="Search"
+                  aria-label="Search plan exercises"
                 />
               </label>
             </div>
@@ -1398,13 +1553,16 @@ function PlanBuilder({
                 "All",
                 ...new Set(exercises.map((exercise) => exercise.muscle)),
               ].map((item) => (
-                <button
+                <Button
+                  aria-pressed={muscle === item}
+                  variant={muscle === item ? "contained" : "outlined"}
+                  type="button"
                   key={item}
                   className={muscle === item ? "active" : ""}
                   onClick={() => setMuscle(item)}
                 >
                   {item}
-                </button>
+                </Button>
               ))}
             </div>
             <div className="builder-exercise-list">
@@ -1413,7 +1571,10 @@ function PlanBuilder({
                   (item) => item.exerciseId === exercise.id,
                 );
                 return (
-                  <button
+                  <Button
+                    aria-pressed={added}
+                    variant={added ? "contained" : "outlined"}
+                    type="button"
                     key={exercise.id}
                     className={added ? "added" : ""}
                     onClick={() =>
@@ -1432,28 +1593,30 @@ function PlanBuilder({
                       </small>
                     </div>
                     <span>{added ? "✓" : "＋"}</span>
-                  </button>
+                  </Button>
                 );
               })}
             </div>
           </div>
         </div>
         <div className="modal-foot">
-          <p>
+          <Typography component="p" variant="body2" color="text.secondary">
             {selectedDays.length} days ·{" "}
             {Object.values(dayExercises).flat().length} movements
-          </p>
-          <button
+          </Typography>
+          <Button
+            variant="contained"
+            type="button"
             className="primary-button"
             onClick={() => void save()}
             disabled={saving}
           >
             {saving ? "Saving…" : "Save plan"}
             <span>→</span>
-          </button>
+          </Button>
         </div>
       </div>
-    </div>
+    </AppDialog>
   );
 }
 
@@ -1477,10 +1640,9 @@ function SessionHistoryModal({
   );
 
   return (
-    <div
-      className="overlay session-history-overlay"
-      role="dialog"
-      aria-modal="true"
+    <AppDialog
+      open
+      onClose={onClose}
       aria-label={`${session.dayName} session details`}
     >
       <div className="session-history-panel">
@@ -1489,18 +1651,20 @@ function SessionHistoryModal({
             <span className="kicker">
               <span /> COMPLETED SESSION
             </span>
-            <h2>{session.dayName}</h2>
-            <p>
+            <Typography component="h2" variant="h5" gutterBottom>
+              {session.dayName}
+            </Typography>
+            <Typography component="p" variant="body2" color="text.secondary">
               {fullDateLabel(session.workoutDate)} · {session.planName}
-            </p>
+            </Typography>
           </div>
-          <button
+          <IconButton
             className="close-button"
             onClick={onClose}
             aria-label="Close session details"
           >
             ×
-          </button>
+          </IconButton>
         </header>
         <div className="session-history-body">
           <div className="session-summary" aria-label="Session summary">
@@ -1528,7 +1692,9 @@ function SessionHistoryModal({
               >
                 <div className="session-exercise-head">
                   <span>{String(exerciseIndex + 1).padStart(2, "0")}</span>
-                  <h3>{exercise.name}</h3>
+                  <Typography component="h3" variant="h6" gutterBottom>
+                    {exercise.name}
+                  </Typography>
                   <small>{exercise.sets.length} sets</small>
                 </div>
                 <div className="session-set-list">
@@ -1546,15 +1712,20 @@ function SessionHistoryModal({
           </div>
         </div>
         <footer className="modal-foot session-history-foot">
-          <p>
+          <Typography component="p" variant="body2" color="text.secondary">
             This session stays in your history after the weekly status resets.
-          </p>
-          <button className="primary-button" onClick={onClose}>
+          </Typography>
+          <Button
+            variant="contained"
+            type="button"
+            className="primary-button"
+            onClick={onClose}
+          >
             Done<span>✓</span>
-          </button>
+          </Button>
         </footer>
       </div>
-    </div>
+    </AppDialog>
   );
 }
 
@@ -1620,13 +1791,8 @@ function WorkoutLogger({
 
   useEffect(() => {
     if (swapTargetIndex == null) return;
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") closeSwap();
-    }
-    document.addEventListener("keydown", handleKeyDown);
     if (!pendingReplacement)
       window.requestAnimationFrame(() => swapSearchRef.current?.focus());
-    return () => document.removeEventListener("keydown", handleKeyDown);
   }, [swapTargetIndex, pendingReplacement]);
 
   const groups = useMemo(() => {
@@ -1858,7 +2024,7 @@ function WorkoutLogger({
           : "hold";
     const guidanceId = `guidance-${item.id}-${set.setNumber}`;
     const input = (
-      <input
+      <Field
         inputMode={field === "weight" ? "decimal" : "numeric"}
         aria-label={`${item.name}, set ${set.setNumber}, ${field}`}
         value={set[field]}
@@ -1952,10 +2118,11 @@ function WorkoutLogger({
   );
   const groupRest = activeExercises[0]?.exercise.restSeconds || 120;
   return (
-    <div
-      className="overlay logger-overlay"
-      role="dialog"
-      aria-modal="true"
+    <AppDialog
+      open
+      onClose={(_, reason) => {
+        if (reason === "escapeKeyDown" && !saving && !pausing) void pause();
+      }}
       aria-label={`Log ${workout.dayName}`}
     >
       <div className="logger-panel">
@@ -1964,7 +2131,9 @@ function WorkoutLogger({
             <span className="kicker">
               <span /> LIVE SESSION
             </span>
-            <h2>{workout.dayName}</h2>
+            <Typography component="h2" variant="h5" gutterBottom>
+              {workout.dayName}
+            </Typography>
           </div>
           <div className="session-timers">
             <div className="workout-timer">
@@ -1980,42 +2149,44 @@ function WorkoutLogger({
                     : "Resting"}
               </small>
               <strong>{formatElapsed(restSecondsLeft)}</strong>
-              {restEndsAt ? (
-                <div>
-                  <button onClick={() => setRestEndsAt(null)}>Skip</button>
-                  <button
-                    onClick={() =>
-                      setRestEndsAt(
-                        (current) => (current ?? Date.now()) + 30000,
-                      )
-                    }
-                  >
-                    +30s
-                  </button>
-                </div>
-              ) : null}
+              <div style={{ visibility: restEndsAt ? "visible" : "hidden" }}>
+                <Button
+                  variant="outlined"
+                  type="button"
+                  onClick={() => setRestEndsAt(null)}
+                >
+                  Skip
+                </Button>
+                <Button
+                  variant="outlined"
+                  type="button"
+                  onClick={() =>
+                    setRestEndsAt((current) => (current ?? Date.now()) + 30000)
+                  }
+                >
+                  +30s
+                </Button>
+              </div>
             </div>
             <div className="logger-progress">
               <span>
                 {completeSets}/{totalSets} sets
               </span>
-              <i>
-                <b
-                  style={{
-                    width: `${totalSets ? (completeSets / totalSets) * 100 : 0}%`,
-                  }}
-                />
-              </i>
+              <LinearProgress
+                variant="determinate"
+                value={totalSets ? (completeSets / totalSets) * 100 : 0}
+                aria-label="Workout progress"
+              />
             </div>
           </div>
-          <button
+          <IconButton
             className="close-button pause-close"
             disabled={saving || pausing}
             onClick={() => void pause()}
             aria-label="Pause workout"
           >
             Ⅱ
-          </button>
+          </IconButton>
         </header>
         <div className="logger-main">
           <aside className="logger-exercises">
@@ -2028,7 +2199,12 @@ function WorkoutLogger({
               );
               return (
                 <div className="logger-exercise-cluster" key={group.key}>
-                  <button
+                  <Button
+                    aria-pressed={activeGroupIndex === index}
+                    variant={
+                      activeGroupIndex === index ? "contained" : "outlined"
+                    }
+                    type="button"
                     className={activeGroupIndex === index ? "active" : ""}
                     onClick={() => setActiveGroupIndex(index)}
                   >
@@ -2049,7 +2225,7 @@ function WorkoutLogger({
                         {members.map((item) => item.name).join(" + ")}
                       </strong>
                     </div>
-                  </button>
+                  </Button>
                 </div>
               );
             })}
@@ -2060,16 +2236,20 @@ function WorkoutLogger({
                 <span className="muscle-pill">
                   {isSuperset ? "SUPERSET" : activeExercises[0].exercise.muscle}
                 </span>
-                <h3>
+                <Typography component="h3" variant="h6" gutterBottom>
                   {activeExercises
                     .map(({ exercise }) => exercise.name)
                     .join(" + ")}
-                </h3>
-                <p>
+                </Typography>
+                <Typography
+                  component="p"
+                  variant="body2"
+                  color="text.secondary"
+                >
                   {isSuperset
                     ? `Move through A, then B · ${formatRest(groupRest)} rest starts after each round`
                     : `${activeExercises[0].exercise.equipment} · Goal range ${formatRepRange(activeExercises[0].exercise)}`}
-                </p>
+                </Typography>
                 {activeExercises.some(
                   ({ exercise }) => exercise.swappedFrom,
                 ) ? (
@@ -2088,7 +2268,9 @@ function WorkoutLogger({
               <div className="set-logger-tools">
                 <div className="swap-actions">
                   {activeExercises.map(({ exercise, exerciseIndex }) => (
-                    <button
+                    <Button
+                      variant="outlined"
+                      type="button"
                       key={exercise.id}
                       className="swap-trigger"
                       onClick={() => openSwap(exerciseIndex)}
@@ -2096,7 +2278,7 @@ function WorkoutLogger({
                     >
                       <span aria-hidden="true">⇄</span>
                       {isSuperset ? exercise.name : "Swap exercise"}
-                    </button>
+                    </Button>
                   ))}
                 </div>
                 <span className="auto-rest-note">
@@ -2240,44 +2422,58 @@ function WorkoutLogger({
                 })}
               </div>
             )}
-            <button className="add-set-button" onClick={addRound}>
+            <Button
+              variant="outlined"
+              type="button"
+              className="add-set-button"
+              onClick={addRound}
+            >
               ＋ Add {isSuperset ? "a round" : "a set"}
-            </button>
+            </Button>
           </section>
         </div>
         <footer className="modal-foot logger-foot">
-          <p className={pauseError ? "logger-save-error" : ""}>
+          <Typography
+            component="p"
+            variant="body2"
+            color="text.secondary"
+            className={pauseError ? "logger-save-error" : ""}
+          >
             {pauseError ||
               (completeSets === totalSets
                 ? "All planned sets logged. Nice work."
                 : `${totalSets - completeSets} sets left on the line.`)}
-          </p>
+          </Typography>
           <div className="logger-footer-actions">
-            <button
+            <Button
+              variant="outlined"
+              type="button"
               className="pause-workout-button"
               disabled={saving || pausing}
               onClick={() => void pause()}
             >
               {pausing ? "Pausing…" : "Pause workout"}
               <span>Ⅱ</span>
-            </button>
-            <button
+            </Button>
+            <Button
+              variant="contained"
+              type="button"
               className="primary-button"
               disabled={!completeSets || saving || pausing}
               onClick={() => void finish()}
             >
               {saving ? "Saving…" : "Finish workout"}
               <span>✓</span>
-            </button>
+            </Button>
           </div>
         </footer>
       </div>
       {swapTarget ? (
         <div className="swap-overlay">
-          <section
-            className="swap-panel"
-            role="dialog"
-            aria-modal="true"
+          <AppDialog
+            open
+            onClose={closeSwap}
+            maxWidth="sm"
             aria-labelledby="swap-title"
           >
             <header className="swap-head">
@@ -2285,26 +2481,45 @@ function WorkoutLogger({
                 <span className="kicker">
                   <span /> SESSION-ONLY CHANGE
                 </span>
-                <h2 id="swap-title">Swap {swapTarget.name}</h2>
-                <p>Keep this workout moving without editing your plan.</p>
+                <Typography
+                  component="h2"
+                  variant="h5"
+                  gutterBottom
+                  id="swap-title"
+                >
+                  Swap {swapTarget.name}
+                </Typography>
+                <Typography
+                  component="p"
+                  variant="body2"
+                  color="text.secondary"
+                >
+                  Keep this workout moving without editing your plan.
+                </Typography>
               </div>
-              <button
+              <IconButton
                 className="close-button"
                 onClick={closeSwap}
                 aria-label="Close exercise swap"
               >
                 ×
-              </button>
+              </IconButton>
             </header>
             {pendingReplacement ? (
               <div className="swap-confirm">
                 <span className="swap-glyph" aria-hidden="true">
                   ⇄
                 </span>
-                <p>
+                <Typography
+                  component="p"
+                  variant="body2"
+                  color="text.secondary"
+                >
                   Replace <strong>{swapTarget.name}</strong> with
-                </p>
-                <h3>{pendingReplacement.name}</h3>
+                </Typography>
+                <Typography component="h3" variant="h6" gutterBottom>
+                  {pendingReplacement.name}
+                </Typography>
                 <div className="swap-warning">
                   <strong>
                     {swapTarget.sets.filter((set) => set.reps !== "").length}{" "}
@@ -2318,18 +2533,22 @@ function WorkoutLogger({
                   <span>The replacement starts with fresh set entries.</span>
                 </div>
                 <div className="swap-confirm-actions">
-                  <button
+                  <Button
+                    variant="outlined"
+                    type="button"
                     className="text-button"
                     onClick={() => setPendingReplacement(null)}
                   >
                     Keep {swapTarget.name}
-                  </button>
-                  <button
+                  </Button>
+                  <Button
+                    variant="contained"
+                    type="button"
                     className="primary-button"
                     onClick={() => replaceExercise(pendingReplacement)}
                   >
                     Swap & clear<span>→</span>
-                  </button>
+                  </Button>
                 </div>
               </div>
             ) : (
@@ -2341,16 +2560,20 @@ function WorkoutLogger({
                   <div>
                     <small>Replacing</small>
                     <strong>{swapTarget.name}</strong>
-                    <p>
+                    <Typography
+                      component="p"
+                      variant="body2"
+                      color="text.secondary"
+                    >
                       {swapTarget.plannedSets} sets ·{" "}
                       {formatRepRange(swapTarget)} reps ·{" "}
                       {formatRest(swapTarget.restSeconds)} rest
-                    </p>
+                    </Typography>
                   </div>
                 </div>
                 <div className="swap-search">
                   <span aria-hidden="true">⌕</span>
-                  <input
+                  <Field
                     ref={swapSearchRef}
                     value={swapQuery}
                     onChange={(event) => setSwapQuery(event.target.value)}
@@ -2360,7 +2583,9 @@ function WorkoutLogger({
                 </div>
                 <div className="swap-list" aria-label="Replacement exercises">
                   {swapOptions.map((exercise) => (
-                    <button
+                    <Button
+                      variant="outlined"
+                      type="button"
                       key={exercise.id}
                       onClick={() => replaceExercise(exercise)}
                     >
@@ -2385,27 +2610,37 @@ function WorkoutLogger({
                         </small>
                       </span>
                       <i aria-hidden="true">→</i>
-                    </button>
+                    </Button>
                   ))}
                 </div>
                 {!swapOptions.length ? (
                   <div className="swap-empty">
                     <strong>No matches</strong>
-                    <p>Try another exercise, muscle, or equipment name.</p>
+                    <Typography
+                      component="p"
+                      variant="body2"
+                      color="text.secondary"
+                    >
+                      Try another exercise, muscle, or equipment name.
+                    </Typography>
                   </div>
                 ) : null}
                 <footer className="swap-foot">
                   <span>⇄</span>
-                  <p>
+                  <Typography
+                    component="p"
+                    variant="body2"
+                    color="text.secondary"
+                  >
                     <strong>This workout only.</strong> Your programmed exercise
                     stays in the plan for next time.
-                  </p>
+                  </Typography>
                 </footer>
               </>
             )}
-          </section>
+          </AppDialog>
         </div>
       ) : null}
-    </div>
+    </AppDialog>
   );
 }

@@ -54,6 +54,19 @@ test("same plan-builder interface uses AWS contracts and persists through reauth
   await expect(
     page.getByRole("heading", { name: "Private UI Movement", exact: true }),
   ).toBeVisible();
+  await page
+    .getByRole("button", { name: "Plans", exact: true })
+    .first()
+    .click();
+  const savedPlan = page
+    .getByRole("article")
+    .filter({
+      has: page.getByRole("heading", { name: "AWS Browser Plan", exact: true }),
+    });
+  await savedPlan.getByRole("button", { name: "Make active" }).click();
+  await expect(
+    savedPlan.getByRole("button", { name: "Make active" }),
+  ).not.toBeVisible();
   let expiredAuth = true;
   await page.route("**/api/v1/sessions/*", (route) =>
     expiredAuth && route.request().method() === "PUT"
