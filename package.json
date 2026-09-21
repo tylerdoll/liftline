@@ -13,7 +13,7 @@
     "lint": "eslint api domain contracts frontend infra scripts tests",
     "build": "vite build && node --import tsx scripts/bundle.ts",
     "synth": "node --import tsx infra/app.ts",
-    "test:unit": "node --import tsx --test tests/recovery.test.ts tests/time.test.ts tests/infra.test.ts tests/progression-parity.test.ts",
+    "test:unit": "node --import tsx --test tests/recovery.test.ts tests/time.test.ts tests/infra.test.ts tests/progression-parity.test.ts tests/release.test.ts",
     "test:aws": "node --import tsx --test tests/aws.integration.ts tests/migration.integration.ts tests/restore.integration.ts",
     "test:aws-browser": "playwright test -c playwright.aws.config.ts",
     "manifest": "node --import tsx scripts/manifest.ts",

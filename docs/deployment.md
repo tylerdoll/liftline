@@ -1,26 +1,32 @@
-# Deployment runbook
+# Beta-to-production delivery
 
-## Current prerequisites
+The release workflow builds and validates one immutable candidate on protected `main`, publishes it to beta, runs authenticated integration tests with two synthetic users, and promotes that exact candidate to production only after beta succeeds. Production runs a bounded smoke test with a separate synthetic user. Releases are serialized. Pull requests have no AWS access.
 
-Current setup uses an isolated alpha AWS Project in `us-east-2`; see [alpha setup](alpha.md). Beta and production access are not authorized for the agent. The following paired-environment runbook is retained for future owner-managed setup. Keep release enablement off until all launch gates are complete. Use two separate projects in `us-east-2`; the preprod account also contains the isolated recovery bucket, inaccessible to the preprod application and normal delivery role. Creating accounts, accepting terms, billing setup and real deployment are separate user actions.
+The candidate contains the frontend, Lambda bundles, CDK assembly, and SHA-256 manifest. It is encrypted and authenticated before upload because this is a public repository and assemblies contain private project configuration. Deployment jobs decrypt and verify the complete artifact set; they never rebuild it. CloudFront invalidation completes and the served HTML must match the candidate before integration testing starts.
 
-1. Create accounts, secure administrator access, and confirm billing/free-tier eligibility. Set real `PREPROD_ACCOUNT`, `PROD_ACCOUNT`, and `ALERT_EMAIL` locally and as repository variables. Confirm SNS subscriptions. Budget alerts are notifications, not spending caps.
-2. As administrator, bootstrap CDK in both accounts. Review the synthesized Delivery, Data and Recovery stacks. Create production backup/replication roles before the recovery bucket policy references them; if deploying in phases, bootstrap those roles first, then recovery, then replication. Do not use the normal delivery role for these stacks.
-3. Install the GitHub OIDC provider and delivery stack in each account. If an OIDC provider already exists, import it rather than creating a duplicate. Set the `DEPLOY_ROLE_ARN` variable separately in the `preprod` and `prod` GitHub environments. Restrict each environment to the protected `main` branch. AWS trust binds the repository and environment; GitHub's environment branch rule supplies the ref restriction. Do not enable releases without both controls.
-4. Protect `main`: require PRs, CODEOWNERS approval for infra/workflows, the `local-validation` status check, no force pushes/deletion, and enforcement for administrators. Public PRs get read-only contents permission and no AWS credentials. There is no privileged `pull_request_target` workflow.
-5. Review IAM through AWS policy simulation and real negative tests. In particular, the app execution boundary must prevent deleting production tables/backups; ordinary CI/app roles must fail to read the recovery bucket. Tighten generated service permissions to the actual deployed resource ARNs after bootstrap where create-time APIs require broader resources. Verify CDK asset publication with the dedicated execution role; do not replace it with an administrator policy to make a deployment pass.
-6. Deploy preprod app using the reviewed assembly, then seed only the catalog. Create two dedicated synthetic identities for preprod and one for prod, bind them with the administrator invite tooling, and configure protected environment smoke credentials. Test user credentials are never real user credentials or public artifacts. Cognito managed-login selectors and IAM must be validated in real preprod.
-7. Complete real preprod API/browser integration: forged IDs, disabled users, private/custom visibility, concurrency, copy independence/revocation, expiry and recovery. Run the restore drill and cross-account archive/weekly-export reconciliation. Record measured RPO and RTO privately. A successful emulator run does not waive these gates.
-8. Only after the launch review set `LIFTLINE_RELEASE_ENABLED=true`. Main then builds one candidate and promotes its exact hashes through preprod to prod. No later build occurs in deployment jobs. Manually bootstrap data/identity/schema changes first if needed; only additive transforms may accompany a release.
+GitHub environments `beta` and `prod` allow only the `main` branch. Their short-lived OIDC roles trust the exact repository subject and environment, including GitHub's immutable repository/owner IDs. No long-lived AWS keys are stored. Ordinary release roles deploy only application stacks and cannot bootstrap delivery, data, or recovery stacks.
 
-## Local commands
+## First-time setup
 
-Node 24, Python 3.12 and pnpm are required. Install with `pnpm install` and `python -m pip install -r requirements-test.txt`; start `python scripts/local-aws.py` in a separate terminal. Run `pnpm exec playwright install chromium`, then `pnpm check`. `pnpm dev` hosts the unchanged baseline on port 4173. `pnpm dev:aws` hosts the migrated UI with synthetic auth and Moto on port 4174. These test hosts are not production servers and are excluded from runtime bundles.
+Follow [the owner setup guide](owner-stage-setup.md). The owner personally creates AWS trust and foundation resources, initial app infrastructure, the catalog, and synthetic test identities. Agents must not log in to beta or production without separate explicit permission. All Regional resources use `us-east-2`.
 
-`pnpm build && pnpm synth && pnpm manifest` produces the candidate. `node --import tsx scripts/verify-manifest.ts` checks all frontend, backend and assembly hashes. Only the release workflow should invoke `scripts/deploy.ts`. The script verifies the actual STS account and rejects placeholder accounts.
+Repository configuration:
+
+- Secrets: `BETA_ACCOUNT`, `PROD_ACCOUNT`, `BETA_ALERT_EMAIL`, `PROD_ALERT_EMAIL`, `CANDIDATE_KEY`.
+- Variables: `LIFTLINE_OIDC_SUBJECT_PREFIX`, `LIFTLINE_RELEASE_ENABLED`.
+- Each environment: `DEPLOY_ROLE_ARN`, `SMOKE_EMAIL`, `SMOKE_PASSWORD` secrets.
+- Beta additionally: `SECOND_SMOKE_EMAIL`, `SECOND_SMOKE_PASSWORD` secrets.
+
+Keep enablement false until owner bootstrap, smoke identities, and secrets are ready. Set it to true and dispatch **Exact artifact release** on main for the initial run. After that, main pushes trigger releases automatically. A metadata-only workflow explicitly dispatches releases after bot merges, because GitHub can suppress push events generated by `GITHUB_TOKEN`. It only selects a merged revision on main and never executes PR code. PR auto-merge requires the existing `local-validation` check, with no self-approval requirement; the privileged auto-merge workflow does not check out or execute PR code.
+
+## Integration gate
+
+Beta tests real managed login and authenticated APIs, private exercise/session/plan isolation, operation replay, changed-input/stale revision conflicts, concurrent writers, durable completion, independent/remapped copies, revocation, no copied performance history, and missing/invalid-token rejection. Synthetic identities are distinct from real users and credentials are not recorded in browser traces, screenshots, video, or artifacts. Offline browser recovery and scheduled expiry have local coverage; extended real-cloud validation and measured disaster recovery remain separate launch gates.
 
 ## Rollback
 
-A failed smoke run restores prior Lambda aliases and the prior versioned index. Existing hashed assets and Lambda versions remain available. No table or backup is deleted. On a first deployment with no previous version, leave the environment unopened and investigate. Infrastructure rollback and schema compatibility require review; app rollback is not permission to reverse a data migration. After any rollback, run smoke again and reconcile release metadata before the next promotion.
+Before deployment, capture prior accepted release metadata and Lambda alias versions. Deployment or smoke failure restores the prior aliases and versioned frontend, waits for invalidation, restores accepted-release metadata, and checks aliases, public HTML, and unauthenticated rejection. No data is rolled back. A first release without an accepted predecessor fails closed; investigate instead of pretending rollback succeeded. Schema changes must remain additive. Full authenticated rollback drills are still required before claiming the recovery target is proven.
 
-GitHub release failure notifications should reach the administrator through repository Actions notifications; before launch, verify SNS/API/expiry/backup alerts and configure a release-failure email path in the chosen account. Do not assume that a workflow failure itself guarantees an email delivery.
+## Evidence and remaining gates
+
+Configuration and local tests do not prove that beta/prod IAM, CloudFront, Cognito or cross-project recovery work. The first successful GitHub release is required before describing this pipeline as operational. Verify alert subscriptions and actual failure delivery, perform negative IAM tests, measure a real restore drill, and reconcile recovery exports/archives. Private migration and final cutover follow their own runbooks after launch review.

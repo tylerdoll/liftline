@@ -27,7 +27,7 @@ import * as cloudwatch from "aws-cdk-lib/aws-cloudwatch";
 import * as actions from "aws-cdk-lib/aws-cloudwatch-actions";
 import * as budgets from "aws-cdk-lib/aws-budgets";
 type EnvironmentProps = StackProps & {
-  stage: "alpha" | "preprod" | "prod";
+  stage: "alpha" | "beta" | "prod";
   email: string;
 };
 function bucket(scope: Construct, id: string, name?: string) {
@@ -97,7 +97,10 @@ export class DataStack extends Stack {
   constructor(
     scope: Construct,
     id: string,
-    props: EnvironmentProps & { recoveryAccount: string },
+    props: EnvironmentProps & {
+      recoveryAccount: string;
+      recoveryReady?: boolean;
+    },
   ) {
     super(scope, id, props);
     this.table = new ddb.Table(this, "Records", {
@@ -161,25 +164,26 @@ export class DataStack extends Stack {
           ],
         }),
       );
-      (
-        this.archive.node.defaultChild as s3.CfnBucket
-      ).replicationConfiguration = {
-        role: replication.roleArn,
-        rules: [
-          {
-            id: "private-archive",
-            priority: 1,
-            status: "Enabled",
-            filter: { prefix: "private/" },
-            deleteMarkerReplication: { status: "Disabled" },
-            destination: {
-              bucket: `arn:aws:s3:::liftline-recovery-${props.recoveryAccount}`,
-              account: props.recoveryAccount,
-              accessControlTranslation: { owner: "Destination" },
+      if (props.recoveryReady !== false)
+        (
+          this.archive.node.defaultChild as s3.CfnBucket
+        ).replicationConfiguration = {
+          role: replication.roleArn,
+          rules: [
+            {
+              id: "private-archive",
+              priority: 1,
+              status: "Enabled",
+              filter: { prefix: "private/" },
+              deleteMarkerReplication: { status: "Disabled" },
+              destination: {
+                bucket: `arn:aws:s3:::liftline-recovery-${props.recoveryAccount}`,
+                account: props.recoveryAccount,
+                accessControlTranslation: { owner: "Destination" },
+              },
             },
-          },
-        ],
-      };
+          ],
+        };
     }
     const topic = alertTopic(this, props.email);
     const vault = new backup.BackupVault(this, "DailyVault", {
@@ -222,7 +226,7 @@ export class DataStack extends Stack {
     );
     this.table.grant(role, "dynamodb:GetItem", "dynamodb:PutItem");
     const destination =
-      props.stage === "prod"
+      props.stage === "prod" && props.recoveryReady !== false
         ? `liftline-recovery-${props.recoveryAccount}`
         : this.archive.bucketName;
     role.addToPolicy(
@@ -243,7 +247,9 @@ export class DataStack extends Stack {
         TABLE_NAME: this.table.tableName,
         RECOVERY_BUCKET: destination,
         RECOVERY_ACCOUNT:
-          props.stage === "prod" ? props.recoveryAccount : this.account,
+          props.stage === "prod" && props.recoveryReady !== false
+            ? props.recoveryAccount
+            : this.account,
       },
       logGroup: new logs.LogGroup(this, "BackupLogs", {
         retention:

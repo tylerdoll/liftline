@@ -1,10 +1,47 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { App } from "aws-cdk-lib";
+import { Template } from "aws-cdk-lib/assertions";
+import { DataStack } from "../infra/stacks";
 const template = (name: string) =>
   JSON.parse(readFileSync(`cdk.out/${name}.template.json`, "utf8"));
+
+test("owner foundation creates recovery writer roles before enabling destination-dependent replication", () => {
+  const app = new App();
+  const stack = new DataStack(app, "FoundationContract", {
+    env: { account: "222222222222", region: "us-east-2" },
+    stage: "prod",
+    email: "synthetic@example.invalid",
+    recoveryAccount: "111111111111",
+    recoveryReady: false,
+  });
+  const resources: any[] = Object.values(
+    Template.fromStack(stack).toJSON().Resources,
+  );
+  for (const role of [
+    "liftline-prod-backup",
+    "liftline-prod-archive-replication",
+  ])
+    assert.ok(
+      resources.some(
+        (r) => r.Type === "AWS::IAM::Role" && r.Properties.RoleName === role,
+      ),
+    );
+  assert.ok(
+    !resources.some(
+      (r) =>
+        r.Type === "AWS::S3::Bucket" && r.Properties.ReplicationConfiguration,
+    ),
+  );
+  const backup = resources.find((r) => r.Type === "AWS::Lambda::Function");
+  assert.equal(
+    backup.Properties.Environment.Variables.RECOVERY_ACCOUNT,
+    "222222222222",
+  );
+});
 test("synthesized data contract: on-demand, deletion protection, PITR35, sparse expiry GSI", () => {
-  for (const stage of ["prod", "preprod"]) {
+  for (const stage of ["prod", "beta"]) {
     const t = template(`LiftlineData-${stage}`);
     const table: any = Object.values(t.Resources).find(
       (r: any) => r.Type === "AWS::DynamoDB::Table",
@@ -57,4 +94,49 @@ test("synthesized application exposes scoped JWT API, private assets, and invite
   const policies = resources.filter((r) => r.Type === "AWS::IAM::Policy");
   for (const p of policies)
     assert.ok(!JSON.stringify(p).includes("dynamodb:Scan"));
+});
+
+test("release roles trust only their GitHub environment and cannot deploy data stacks", () => {
+  for (const stage of ["beta", "prod"]) {
+    const t = template(`LiftlineDelivery-${stage}`);
+    const resources: any[] = Object.values(t.Resources);
+    const role = resources.find(
+      (r) =>
+        r.Type === "AWS::IAM::Role" &&
+        r.Properties.RoleName === `liftline-${stage}-github`,
+    );
+    const trust = role.Properties.AssumeRolePolicyDocument.Statement[0];
+    assert.equal(trust.Action, "sts:AssumeRoleWithWebIdentity");
+    assert.equal(
+      trust.Condition.StringEquals["token.actions.githubusercontent.com:aud"],
+      "sts.amazonaws.com",
+    );
+    assert.equal(
+      trust.Condition.StringEquals["token.actions.githubusercontent.com:sub"],
+      `${process.env.GITHUB_SUBJECT_PREFIX ?? "repo:tylerdoll/liftline"}:environment:${stage}`,
+    );
+    const policies = resources.filter(
+      (r) =>
+        r.Type === "AWS::IAM::Policy" &&
+        JSON.stringify(r.Properties.Roles).includes("Deployment"),
+    );
+    const statements = policies.flatMap(
+      (r) => r.Properties.PolicyDocument.Statement,
+    );
+    for (const s of statements) {
+      const actions = [s.Action].flat();
+      if (actions.includes("cloudformation:ExecuteChangeSet")) {
+        assert.match(
+          JSON.stringify(s.Resource),
+          new RegExp(`stack/LiftlineApp-${stage}/`),
+        );
+        assert.ok(!JSON.stringify(s.Resource).includes("LiftlineData"));
+      }
+      if (actions.includes("iam:PassRole"))
+        assert.equal(
+          s.Condition.StringEquals["iam:PassedToService"],
+          "cloudformation.amazonaws.com",
+        );
+    }
+  }
 });

@@ -1,10 +1,16 @@
 import { execFileSync } from "node:child_process";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 const [stage, mode = "deploy"] = process.argv.slice(2);
-if (!["preprod", "prod"].includes(stage))
-  throw new Error("Stage must be preprod or prod");
-const account =
-  process.env[stage === "prod" ? "PROD_ACCOUNT" : "PREPROD_ACCOUNT"];
+if (
+  process.env.GITHUB_ACTIONS !== "true" ||
+  process.env.GITHUB_REF !== "refs/heads/main"
+)
+  throw new Error("Beta/prod releases run only through GitHub Actions on main");
+if (!["deploy", "rollback", "verify-rollback"].includes(mode))
+  throw new Error("Invalid release mode");
+if (!["beta", "prod"].includes(stage))
+  throw new Error("Stage must be beta or prod");
+const account = process.env[stage === "prod" ? "PROD_ACCOUNT" : "BETA_ACCOUNT"];
 if (
   !account ||
   !/^[0-9]{12}$/.test(account) ||
@@ -26,7 +32,63 @@ const outputs = () =>
       aws("cloudformation", "describe-stacks", "--stack-name", stack),
     ).Stacks[0].Outputs.map((o: any) => [o.OutputKey, o.OutputValue]),
   ) as Record<string, string>;
-if (mode === "rollback") {
+const invalidate = (out: Record<string, string>) => {
+  const result = JSON.parse(
+    aws(
+      "cloudfront",
+      "create-invalidation",
+      "--distribution-id",
+      out.Distribution,
+      "--paths",
+      "/index.html",
+      "/",
+    ),
+  );
+  aws(
+    "cloudfront",
+    "wait",
+    "invalidation-completed",
+    "--distribution-id",
+    out.Distribution,
+    "--id",
+    result.Invalidation.Id,
+  );
+};
+if (mode === "verify-rollback") {
+  const prior = JSON.parse(
+    await readFile(`release/${stage}-previous.json`, "utf8"),
+  );
+  if (!prior) throw new Error("No prior release to verify");
+  for (const name of ["ApiFunction", "ExpiryFunction"]) {
+    const alias = JSON.parse(
+      aws(
+        "lambda",
+        "get-alias",
+        "--function-name",
+        prior.outputs[name],
+        "--name",
+        "live",
+      ),
+    );
+    if (alias.FunctionVersion !== prior.versions[name])
+      throw new Error("Rollback alias mismatch");
+  }
+  const expected = aws(
+    "s3",
+    "cp",
+    `s3://${prior.outputs.AssetsBucket}/releases/${prior.commit}/index.html`,
+    "-",
+  );
+  const response = await fetch(prior.outputs.Url, { cache: "no-store" });
+  if (!response.ok || (await response.text()) !== expected)
+    throw new Error("Rollback frontend mismatch");
+  const denied = await fetch(`${prior.outputs.Url}api/v1/me`);
+  if (denied.status !== 401)
+    throw new Error("Rollback authentication check failed");
+  console.log(
+    "Previous aliases, public frontend, and authentication boundary verified.",
+  );
+} else if (mode === "rollback") {
   const prior = JSON.parse(
     await readFile(`release/${stage}-previous.json`, "utf8"),
   );
@@ -53,14 +115,12 @@ if (mode === "rollback") {
     "--cache-control",
     "no-store",
   );
+  invalidate(prior.outputs);
   aws(
-    "cloudfront",
-    "create-invalidation",
-    "--distribution-id",
-    prior.outputs.Distribution,
-    "--paths",
-    "/index.html",
-    "/",
+    "s3",
+    "cp",
+    `s3://${prior.outputs.AssetsBucket}/releases/${prior.commit}/manifest.json`,
+    `s3://${prior.outputs.AssetsBucket}/releases/current.json`,
   );
   console.log(
     "Previous application aliases and index restored; canonical data retained.",
@@ -76,7 +136,8 @@ if (mode === "rollback") {
       last = JSON.parse(
         aws("s3", "cp", `s3://${out.AssetsBucket}/releases/current.json`, "-"),
       );
-    } catch {
+    } catch (e: any) {
+      if (!/404|NoSuchKey|Not Found/.test(String(e.stderr))) throw e;
       last = null;
     }
     if (last) {
@@ -149,15 +210,13 @@ if (mode === "rollback") {
     "--cache-control",
     "no-store",
   );
-  aws(
-    "cloudfront",
-    "create-invalidation",
-    "--distribution-id",
-    out.Distribution,
-    "--paths",
-    "/index.html",
-    "/",
-  );
+  invalidate(out);
+  const served = await fetch(out.Url, { cache: "no-store" });
+  if (
+    !served.ok ||
+    (await served.text()) !== (await readFile("dist/web/index.html", "utf8"))
+  )
+    throw new Error("CloudFront is not serving the exact candidate frontend");
   await writeFile(`release/${stage}-outputs.json`, JSON.stringify(out));
   console.log(
     "Exact manifest deployed; smoke verification required before acceptance.",
