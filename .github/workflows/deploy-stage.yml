@@ -7,43 +7,67 @@ on:
         type: string
 jobs:
   deploy:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     environment: ${{ inputs.stage }}
     permissions:
       contents: read
       id-token: write
     env:
       STAGE: ${{ inputs.stage }}
-      PREPROD_ACCOUNT: ${{ vars.PREPROD_ACCOUNT }}
-      PROD_ACCOUNT: ${{ vars.PROD_ACCOUNT }}
+      BETA_ACCOUNT: ${{ secrets.BETA_ACCOUNT }}
+      PROD_ACCOUNT: ${{ secrets.PROD_ACCOUNT }}
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
-          node-version: '24'
+          node-version: "24"
       - run: npm install --global pnpm@11.19.0
       - run: pnpm install --frozen-lockfile
+      - name: Verify stage and smoke credentials before deployment
+        env:
+          SMOKE_EMAIL: ${{ secrets.SMOKE_EMAIL }}
+          SMOKE_PASSWORD: ${{ secrets.SMOKE_PASSWORD }}
+          SECOND_SMOKE_EMAIL: ${{ secrets.SECOND_SMOKE_EMAIL }}
+          SECOND_SMOKE_PASSWORD: ${{ secrets.SECOND_SMOKE_PASSWORD }}
+        run: |
+          test "$STAGE" = beta -o "$STAGE" = prod
+          test -n "$SMOKE_EMAIL" && test -n "$SMOKE_PASSWORD"
+          if [ "$STAGE" = beta ]; then
+            test -n "$SECOND_SMOKE_EMAIL" && test -n "$SECOND_SMOKE_PASSWORD"
+            test "$SMOKE_EMAIL" != "$SECOND_SMOKE_EMAIL"
+          fi
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: candidate
+      - run: node --import tsx scripts/candidate-archive.ts unpack
+        env:
+          CANDIDATE_KEY: ${{ secrets.CANDIDATE_KEY }}
       - run: node --import tsx scripts/verify-manifest.ts
       - uses: aws-actions/configure-aws-credentials@ff717079ee2060e4bcee96c4779b553acc87447c
         with:
-          role-to-assume: ${{ vars.DEPLOY_ROLE_ARN }}
+          role-to-assume: ${{ secrets.DEPLOY_ROLE_ARN }}
           aws-region: us-east-2
+          allowed-account-ids: ${{ inputs.stage == 'prod' && secrets.PROD_ACCOUNT || secrets.BETA_ACCOUNT }}
+          mask-aws-account-id: true
+      - run: pnpm exec playwright install --with-deps chromium
       - id: deploy
         run: node --import tsx scripts/deploy.ts "$STAGE"
-      - run: pnpm exec playwright install --with-deps chromium
       - id: smoke
+        name: Authenticated integration and smoke tests
         run: pnpm exec playwright test -c playwright.cloud.config.ts
         env:
           SMOKE_EMAIL: ${{ secrets.SMOKE_EMAIL }}
           SMOKE_PASSWORD: ${{ secrets.SMOKE_PASSWORD }}
           SECOND_SMOKE_EMAIL: ${{ secrets.SECOND_SMOKE_EMAIL }}
           SECOND_SMOKE_PASSWORD: ${{ secrets.SECOND_SMOKE_PASSWORD }}
-      - if: failure() && (steps.deploy.outcome == 'success' || steps.deploy.outcome == 'failure')
-        run: |
-          if test -f "release/$STAGE-previous.json"; then
-            node --import tsx scripts/deploy.ts "$STAGE" rollback
-          fi
-      - run: node --import tsx scripts/accept-release.ts "$STAGE"
+      - id: accept
+        run: node --import tsx scripts/accept-release.ts "$STAGE"
+      - id: rollback
+        name: Restore previous application after a failed release
+        if: failure() && (steps.deploy.outcome == 'success' || steps.deploy.outcome == 'failure')
+        run: node --import tsx scripts/deploy.ts "$STAGE" rollback
+      - name: Verify restored application
+        if: failure() && steps.rollback.outcome == 'success'
+        run: node --import tsx scripts/deploy.ts "$STAGE" verify-rollback

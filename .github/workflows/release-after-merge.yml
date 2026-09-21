@@ -1,0 +1,45 @@
+name: Release after automated merge
+on:
+  workflow_run:
+    workflows: [Contract checks, Enable auto-merge]
+    types: [completed]
+permissions:
+  contents: read
+  pull-requests: read
+  actions: write
+concurrency:
+  group: liftline-release-dispatch
+  cancel-in-progress: false
+jobs:
+  dispatch:
+    if: github.event.workflow_run.conclusion == 'success' && vars.LIFTLINE_RELEASE_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+    steps:
+      # GITHUB_TOKEN merges can suppress push workflows. Explicit dispatch is
+      # supported; never check out code or download artifacts from the PR run.
+      - name: Dispatch the merged main revision if no release already exists
+        shell: bash
+        run: |
+          [[ "$HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]
+          for attempt in {1..24}; do
+            prs=$(gh api "repos/$GH_REPO/commits/$HEAD_SHA/pulls")
+            main=$(gh api "repos/$GH_REPO/git/ref/heads/main" --jq '.object.sha')
+            merged=$(jq -r --arg main "$main" '[.[] | select(.base.ref == "main" and .merged_at != null and .merge_commit_sha == $main)] | length' <<< "$prs")
+            if [[ "$merged" -gt 0 ]]; then
+              runs=$(gh api "repos/$GH_REPO/actions/workflows/release.yml/runs?branch=main&per_page=100")
+              existing=$(jq -r --arg main "$main" '[.workflow_runs[] | select(.head_sha == $main and (.status != "completed" or .conclusion == "success"))] | length' <<< "$runs")
+              if [[ "$existing" -eq 0 ]]; then
+                gh workflow run release.yml --ref main
+              fi
+              exit 0
+            fi
+            open=$(jq '[.[] | select(.base.ref == "main" and .state == "open" and .draft == false)] | length' <<< "$prs")
+            if [[ "$open" -eq 0 ]]; then exit 0; fi
+            sleep 5
+          done
+          echo 'PR has not merged; a later successful check or main push can trigger release.'

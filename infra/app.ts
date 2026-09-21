@@ -2,25 +2,26 @@ import { App, DefaultStackSynthesizer } from "aws-cdk-lib";
 import { DataStack, AppStack, RecoveryStack } from "./stacks";
 import { DeliveryStack } from "./delivery";
 const app = new App({ outdir: "cdk.out" });
-const preprod =
-    app.node.tryGetContext("preprodAccount") ??
-    process.env.PREPROD_ACCOUNT ??
+const beta =
+    app.node.tryGetContext("betaAccount") ??
+    process.env.BETA_ACCOUNT ??
     "111111111111",
   prod =
     app.node.tryGetContext("prodAccount") ??
     process.env.PROD_ACCOUNT ??
     "222222222222";
-if (preprod === prod) throw new Error("Separate accounts required");
+if (beta === prod) throw new Error("Separate accounts required");
 const email =
   app.node.tryGetContext("alertEmail") ??
   process.env.ALERT_EMAIL ??
   "replace-before-deploy@example.invalid";
 new RecoveryStack(app, "LiftlineRecovery", {
-  env: { account: preprod, region: "us-east-2" },
+  env: { account: beta, region: "us-east-2" },
   sourceAccount: prod,
+  terminationProtection: true,
 });
 for (const [stage, account] of [
-  ["preprod", preprod],
+  ["beta", beta],
   ["prod", prod],
 ] as const) {
   const env = { account, region: "us-east-2" };
@@ -28,12 +29,19 @@ for (const [stage, account] of [
     env,
     stage,
     repository: "tylerdoll/liftline",
+    githubSubject: process.env.GITHUB_SUBJECT_PREFIX
+      ? `${process.env.GITHUB_SUBJECT_PREFIX}:environment:${stage}`
+      : undefined,
+    existingGithubProviderArn:
+      process.env[`${stage.toUpperCase()}_GITHUB_PROVIDER_ARN`],
   });
   const data = new DataStack(app, `LiftlineData-${stage}`, {
     env,
     stage,
-    email,
-    recoveryAccount: preprod,
+    email: process.env[`${stage.toUpperCase()}_ALERT_EMAIL`] ?? email,
+    recoveryAccount: beta,
+    recoveryReady: process.env.RECOVERY_READY !== "false",
+    terminationProtection: true,
   });
   new AppStack(app, `LiftlineApp-${stage}`, {
     env,
@@ -42,7 +50,7 @@ for (const [stage, account] of [
       cloudFormationExecutionRole: `arn:aws:iam::${account}:role/liftline-${stage}-app-execution`,
     }),
     stage,
-    email,
+    email: process.env[`${stage.toUpperCase()}_ALERT_EMAIL`] ?? email,
     table: data.table,
     archive: data.archive,
   });

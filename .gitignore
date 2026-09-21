@@ -13,3 +13,5 @@ release/
 cdk.context.json
 *.log
 .local-python/
+candidate.enc
+candidate.tar

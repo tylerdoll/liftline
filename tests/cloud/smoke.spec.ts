@@ -14,32 +14,50 @@ async function login(
     if (r.url().startsWith(`${url}api/v1/`))
       token = r.headers().authorization ?? token;
   });
-  await page.goto(url);
-  await page.getByRole("button", { name: "Sign in", exact: true }).click();
-  await page
-    .getByLabel(/email|username/i)
-    .first()
-    .fill(email);
-  await page
-    .getByLabel(/password/i)
-    .first()
-    .fill(password);
-  await page
-    .getByRole("button", { name: /sign in/i })
-    .last()
-    .click();
-  await expect(page.getByRole("button", { name: "Sign out" })).toBeVisible();
-  if (!token) throw new Error("No authenticated request observed");
-  return { context, page, token };
+  try {
+    await page.goto(url);
+    await page.getByRole("button", { name: "Sign in", exact: true }).click();
+    await page
+      .getByLabel(/email|username/i)
+      .first()
+      .fill(email);
+    await page
+      .getByLabel(/password/i)
+      .first()
+      .fill(password);
+    await page
+      .getByRole("button", { name: /sign in/i })
+      .last()
+      .click();
+    await expect(page.getByRole("button", { name: "Sign out" })).toBeVisible();
+    if (!token) throw new Error("No authenticated request observed");
+    return { context, page, token };
+  } catch {
+    await context.close();
+    // Playwright locator errors can include filled credentials and OAuth URLs.
+    throw new Error(
+      "Synthetic managed login failed; credential details suppressed",
+    );
+  }
 }
 test("real managed login, same-origin API, isolation, durable completion and copying", async ({
   browser,
 }) => {
-  const stage = process.env.STAGE!;
+  const stage = process.env.STAGE;
+  if (!["beta", "prod"].includes(stage ?? ""))
+    throw new Error("Cloud suite requires explicit STAGE=beta or STAGE=prod");
   const out = JSON.parse(
     await readFile(`release/${stage}-outputs.json`, "utf8"),
   );
-  const url = out.Url;
+  const url = new URL(out.Url).href;
+  if (!url.startsWith("https://")) throw new Error("Cloud tests require HTTPS");
+  if (
+    stage === "beta" &&
+    process.env.SMOKE_EMAIL === process.env.SECOND_SMOKE_EMAIL
+  )
+    throw new Error(
+      "Beta integration requires two distinct synthetic identities",
+    );
   const env = (name: string) => {
     const v = process.env[name];
     if (!v)
@@ -53,7 +71,7 @@ test("real managed login, same-origin API, isolation, durable completion and cop
     env("SMOKE_PASSWORD"),
   );
   const b =
-    stage === "preprod"
+    stage === "beta"
       ? await login(
           browser,
           url,
@@ -67,11 +85,17 @@ test("real managed login, same-origin API, isolation, durable completion and cop
     data?: unknown,
     token = a.token,
   ) =>
-    a.context.request.fetch(`${url}api/v1/${path}`, {
-      method,
-      headers: { authorization: token },
-      data,
-    });
+    a.context.request
+      .fetch(`${url}api/v1/${path}`, {
+        method,
+        headers: { authorization: token },
+        data,
+      })
+      .catch(() => {
+        throw new Error(
+          "Cloud API transport failed; authorization details suppressed",
+        );
+      });
   try {
     const me = await (await request("me")).json();
     expect(me.enabled).toBe(true);
@@ -99,9 +123,30 @@ test("real managed login, same-origin API, isolation, durable completion and cop
     expect(
       (await request(`exercises/${exerciseId}`, "PUT", payload)).ok(),
     ).toBe(true);
+    const saved = await (await request(`exercises/${exerciseId}`)).json();
+    expect(saved).toMatchObject({ ...payload.value, revision: 1 });
     expect(
       (await request(`exercises/${exerciseId}`, "PUT", payload)).ok(),
     ).toBe(true);
+    expect(await (await request(`exercises/${exerciseId}`)).json()).toEqual(
+      saved,
+    );
+    expect(
+      (
+        await request(`exercises/${exerciseId}`, "PUT", {
+          ...payload,
+          value: { ...payload.value, name: "Changed operation input" },
+        })
+      ).status(),
+    ).toBe(409);
+    expect(
+      (
+        await request(`exercises/${exerciseId}`, "PUT", {
+          ...payload,
+          operationId: randomUUID(),
+        })
+      ).status(),
+    ).toBe(409);
     if (b)
       expect(
         (
@@ -109,6 +154,26 @@ test("real managed login, same-origin API, isolation, durable completion and cop
         ).status(),
       ).toBe(404);
     if (b) {
+      const other = await (
+        await request("me", "GET", undefined, b.token)
+      ).json();
+      expect(other.enabled).toBe(true);
+      expect(other.id).not.toBe(me.id);
+      const raced = await Promise.all(
+        ["First writer", "Second writer"].map((name) =>
+          request(`exercises/${exerciseId}`, "PUT", {
+            operationId: randomUUID(),
+            expectedRevision: 1,
+            value: { ...payload.value, name },
+          }),
+        ),
+      );
+      expect(raced.map((response) => response.status()).sort()).toEqual([
+        200, 409,
+      ]);
+      expect(
+        (await (await request(`exercises/${exerciseId}`)).json()).revision,
+      ).toBe(2);
       const id = randomUUID(),
         now = Date.now(),
         date = new Intl.DateTimeFormat("en-CA", {
@@ -162,6 +227,23 @@ test("real managed login, same-origin API, isolation, durable completion and cop
       expect(
         (await request(`sessions/${id}`, "GET", undefined, b.token)).status(),
       ).toBe(404);
+      const completed = await (await request(`sessions/${id}`)).json();
+      expect(completed).toMatchObject({ id, status: "completed", revision: 2 });
+      expect(
+        (
+          await request(`sessions/${id}`, "PUT", {
+            operationId: randomUUID(),
+            expectedRevision: 2,
+            value,
+          })
+        ).status(),
+      ).toBe(409);
+      const progress = await (await request(`progress/${exerciseId}`)).json();
+      expect(
+        progress.items.filter(
+          (item: { sessionId: string }) => item.sessionId === id,
+        ),
+      ).toHaveLength(1);
       const before = await (
         await request("history", "GET", undefined, b.token)
       ).json();
@@ -180,6 +262,32 @@ test("real managed login, same-origin API, isolation, durable completion and cop
         await request("shares/redeem", "POST", { token }, b.token)
       ).json();
       expect(copy.planId).toBeTruthy();
+      const copiedPlan = await request(
+        `plans/${copy.planId}`,
+        "GET",
+        undefined,
+        b.token,
+      );
+      expect(copiedPlan.status()).toBe(200);
+      const template = await copiedPlan.json();
+      expect(template.days).toHaveLength(1);
+      expect(template.days[0].exercises).toHaveLength(1);
+      expect(template.days[0].exercises[0].exerciseId).not.toBe(exerciseId);
+      expect((await request(`plans/${copy.planId}`)).status()).toBe(404);
+      expect(
+        (
+          await request(
+            `shares/${shareId}/revoke`,
+            "POST",
+            {
+              operationId: randomUUID(),
+              expectedRevision: 1,
+              value: null,
+            },
+            b.token,
+          )
+        ).status(),
+      ).toBe(404);
       expect(
         await (
           await request("shares/redeem", "POST", { token }, b.token)
@@ -202,10 +310,15 @@ test("real managed login, same-origin API, isolation, durable completion and cop
       ).toBe(404);
     }
     expect((await a.context.request.get(`${url}api/v1/me`)).status()).toBe(401);
+    expect(
+      (
+        await request("me", "GET", undefined, "Bearer invalid-synthetic-token")
+      ).status(),
+    ).toBe(401);
     const config = await (
       await a.context.request.get(`${url}runtime-config.json`)
     ).json();
-    expect(config.clientId).toBe(out.ClientId);
+    expect(config.clientId === out.ClientId).toBe(true);
     // Bounded production smoke writes only one custom exercise for the dedicated user.
   } finally {
     await a.context.close();

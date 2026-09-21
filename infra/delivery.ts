@@ -9,6 +9,8 @@ export class DeliveryStack extends Stack {
       stage: string;
       repository: string;
       githubEnabled?: boolean;
+      githubSubject?: string;
+      existingGithubProviderArn?: string;
     },
   ) {
     super(scope, id, props);
@@ -122,10 +124,16 @@ export class DeliveryStack extends Stack {
     );
     new CfnOutput(this, "ExecutionRole", { value: execution.roleArn });
     if (props.githubEnabled === false) return;
-    const provider = new iam.OpenIdConnectProvider(this, "GitHub", {
-      url: "https://token.actions.githubusercontent.com",
-      clientIds: ["sts.amazonaws.com"],
-    });
+    const provider = props.existingGithubProviderArn
+      ? iam.OpenIdConnectProvider.fromOpenIdConnectProviderArn(
+          this,
+          "GitHub",
+          props.existingGithubProviderArn,
+        )
+      : new iam.OpenIdConnectProvider(this, "GitHub", {
+          url: "https://token.actions.githubusercontent.com",
+          clientIds: ["sts.amazonaws.com"],
+        });
     const role = new iam.Role(this, "Deployment", {
       roleName: `liftline-${props.stage}-github`,
       assumedBy: new iam.WebIdentityPrincipal(
@@ -133,7 +141,9 @@ export class DeliveryStack extends Stack {
         {
           StringEquals: {
             "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
-            "token.actions.githubusercontent.com:sub": `repo:${props.repository}:environment:${props.stage}`,
+            "token.actions.githubusercontent.com:sub":
+              props.githubSubject ??
+              `repo:${props.repository}:environment:${props.stage}`,
           },
         },
       ),
@@ -169,6 +179,11 @@ export class DeliveryStack extends Stack {
       new iam.PolicyStatement({
         actions: ["iam:PassRole"],
         resources: [execution.roleArn],
+        conditions: {
+          StringEquals: {
+            "iam:PassedToService": "cloudformation.amazonaws.com",
+          },
+        },
       }),
     );
     role.addToPolicy(
@@ -192,7 +207,7 @@ export class DeliveryStack extends Stack {
     );
     role.addToPolicy(
       new iam.PolicyStatement({
-        actions: ["ssm:GetParameter"],
+        actions: ["ssm:GetParameter", "ssm:GetParameters"],
         resources: [
           `arn:aws:ssm:${this.region}:${this.account}:parameter/cdk-bootstrap/hnb659fds/version`,
         ],
@@ -208,7 +223,10 @@ export class DeliveryStack extends Stack {
     );
     role.addToPolicy(
       new iam.PolicyStatement({
-        actions: ["cloudfront:CreateInvalidation"],
+        actions: [
+          "cloudfront:CreateInvalidation",
+          "cloudfront:GetInvalidation",
+        ],
         resources: [`arn:aws:cloudfront::${this.account}:distribution/*`],
       }),
     );
