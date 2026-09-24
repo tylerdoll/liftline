@@ -1,6 +1,6 @@
 # Owner setup for beta and production
 
-GitHub releases deploy application stacks using short-lived OIDC credentials. The owner must first create each project's bootstrap, delivery permissions, and protected data resources. An application deployment role intentionally cannot create its own trust relationship or administer backup infrastructure.
+GitHub releases deploy application stacks on ephemeral CodeBuild runners with temporary service-role credentials. The owner must first create each project's bootstrap, GitHub App connection, delivery runner, and protected data resources. An application deployment role intentionally cannot create its own trust relationship or administer backup infrastructure.
 
 **These commands are for the owner to run personally. Agents must not run them, log in to these projects, or inspect their resources without separate explicit permission.** The `--owner-authorized` flag is an execution guard, not a substitute for that permission. Normal GitHub releases do not use this script.
 
@@ -15,11 +15,11 @@ Create `private/stages.json` locally, replacing every placeholder. This director
   "region": "us-east-2",
   "beta": { "account": "BETA_PROJECT_ID", "alertEmail": "BETA_ALERT_EMAIL" },
   "prod": { "account": "PROD_PROJECT_ID", "alertEmail": "PROD_ALERT_EMAIL" },
-  "githubSubjectPrefix": "repo:OWNER@OWNER_NUMERIC_ID/REPOSITORY@REPOSITORY_NUMERIC_ID"
+  "githubTrustedActorIds": ["OWNER_NUMERIC_GITHUB_ID", "GITHUB_ACTIONS_BOT_NUMERIC_ID"]
 }
 ```
 
-The subject prefix must match GitHub's configured immutable OIDC subject, not an assumed `repo:owner/name` value. The delivery stacks append `:environment:beta` or `:environment:prod`. If a project already has the `token.actions.githubusercontent.com` IAM provider, add `githubProviderArn` to that project's configuration with its existing ARN; IAM permits only one provider for that URL per project. This imports it rather than attempting to create a duplicate. Do not delete a provider used by other applications.
+Resolve actor IDs using GitHub's `/users/<login>` API for the owner and `github-actions[bot]`; use numeric IDs, never usernames or a wildcard. The actor filter is the runner security boundary. See [deployment security](deployment.md) before allowing additional actors. The connection phases below save each project's `connectionArn` into this ignored configuration. No OIDC provider is created for beta or prod.
 
 Use separately named owner CLI profiles. The owner signs in with `aws login --profile <owner-profile> --region us-east-2` as necessary. Never paste credentials into chat, put static AWS keys in GitHub, or point these commands at the alpha profile. The helper verifies STS identity against the selected project before changing resources and rejects CI execution. On Windows it uses the existing user-local AWS CLI installation; set `LIFTLINE_AWS_CLI` locally if your executable is elsewhere.
 
@@ -30,6 +30,15 @@ Run these commands from the repository root. The profile names below are example
 ```sh
 node --import tsx scripts/owner-stage-setup.ts bootstrap-beta --owner-authorized --profile owner-beta
 node --import tsx scripts/owner-stage-setup.ts bootstrap-prod --owner-authorized --profile owner-prod
+node --import tsx scripts/owner-stage-setup.ts connection-beta --owner-authorized --profile owner-beta
+node --import tsx scripts/owner-stage-setup.ts connection-prod --owner-authorized --profile owner-prod
+```
+
+Connections initially remain `PENDING`. In each project's [CodeConnections console in us-east-2](https://us-east-2.console.aws.amazon.com/codesuite/settings/connections?region=us-east-2), complete the pending connection and authorize the AWS GitHub App for **only `tylerdoll/liftline`**. This interactive authorization cannot be completed by the CLI. The foundation helper refuses to continue until the selected connection is `AVAILABLE`. If the managed project policy denies CodeConnections or CodeBuild, stop and investigate supported services; do not silently upgrade or activate advanced capabilities.
+
+Continue only after both connections are available:
+
+```sh
 node --import tsx scripts/owner-stage-setup.ts foundation-prod --owner-authorized --profile owner-prod
 node --import tsx scripts/owner-stage-setup.ts foundation-beta --owner-authorized --profile owner-beta
 node --import tsx scripts/owner-stage-setup.ts recovery --owner-authorized --profile owner-beta
@@ -52,7 +61,7 @@ Confirm the alert subscription emails. A subscription awaiting confirmation cann
 
 ## Configure GitHub and start releases
 
-Keep the release enablement flag off until the owner foundation steps succeed. Configure `beta` and `prod` GitHub environments for the main branch and set their deployment role values from `private/owner-foundation-<stage>-outputs.json`. Use the variable and secret names declared by the checked-in release workflows; preserve environment-specific values. The repository's candidate build also needs the private project IDs, alert configuration, and immutable subject prefix supplied through GitHub configuration rather than source files.
+Keep the release enablement flag off until the owner foundation steps succeed. Configure `beta` and `prod` GitHub environments for the main branch. Verify the runner outputs name `liftline-beta-release` and `liftline-prod-release`; each accepts only the exact release workflow and trusted actor IDs. Use the variable and secret names declared by the checked-in release workflows; preserve environment-specific values. The candidate build needs private project IDs and alert configuration supplied through GitHub configuration rather than source files. Candidate synthesis uses inert runner configuration because releases deploy only the application stacks; delivery changes remain owner-managed.
 
 Beta needs **two dedicated synthetic smoke identities** for isolation and sharing tests. Production uses its separately configured smoke identity or identities as required by the checked-in smoke suite. Never give the suite the owner's normal sign-in or a real friend's workout profile. Provision test users using the owner setup tooling supplied with the pipeline, bind their Cognito subjects to enabled application profiles, and store generated passwords only in GitHub environment secrets and an appropriate private password store. A Cognito user without its application identity binding cannot access the app. Synthetic tests must keep test records separate from real user data.
 
@@ -66,7 +75,7 @@ After configuration, enable releases using the workflow's documented enablement 
 
 - Supply private per-project alert addresses and confirm the selected Region and plan.
 - Run the ordered foundation phases using owner profiles; provide only a success/failure summary, never credentials.
-- Configure matching OIDC trust/environment values and dedicated synthetic test secrets.
+- Authorize both GitHub App connections and configure dedicated synthetic test secrets.
 - Confirm alert email subscriptions and complete the first release through all gates.
 - Decide whether to keep successfully created resources for ongoing use or remove unused resources to reduce cost. Cleanup is a separate reviewed action; these commands never destroy stacks or restore over live data.
 
@@ -78,6 +87,6 @@ The smoke phases create reserved `@example.invalid` synthetic users without send
 
 Copy each name/value from ignored `private/beta-smoke-secrets.json` into **Settings > Environments > beta > Environment secrets**; repeat for prod. Beta requires `SMOKE_EMAIL`, `SMOKE_PASSWORD`, `SECOND_SMOKE_EMAIL`, and `SECOND_SMOKE_PASSWORD`. Production requires the first two only. Do not paste these passwords into chat.
 
-The prepared GitHub configuration uses repository secrets `BETA_ACCOUNT`, `PROD_ACCOUNT`, `BETA_ALERT_EMAIL`, `PROD_ALERT_EMAIL`, and `CANDIDATE_KEY`; each environment has its own `DEPLOY_ROLE_ARN` secret. `LIFTLINE_OIDC_SUBJECT_PREFIX` is a repository variable. The candidate is authenticated/encrypted before uploading to this public repository's Actions artifacts; keep the encryption key stable while a release is running.
+GitHub configuration uses repository secrets `BETA_ACCOUNT`, `PROD_ACCOUNT`, `BETA_ALERT_EMAIL`, `PROD_ALERT_EMAIL`, and `CANDIDATE_KEY`. The previous `DEPLOY_ROLE_ARN` secrets and `LIFTLINE_OIDC_SUBJECT_PREFIX` variable are no longer used. The candidate is authenticated/encrypted before uploading to this public repository's Actions artifacts; keep the encryption key stable while a release is running.
 
 After owner setup and smoke secrets are complete, set repository variable `LIFTLINE_RELEASE_ENABLED` to `true`, then run **Actions > Exact artifact release > Run workflow** on `main`. Beta integration failure blocks production; an application rollback restores previous aliases/frontend where a prior accepted release exists. The first release has no prior accepted application to roll back to and remains failed/unopened if its checks fail. Data is always retained.

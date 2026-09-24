@@ -22,9 +22,4 @@ export function validateReleaseConfig(env: NodeJS.ProcessEnv) {
     env.PROD_ACCOUNT,
     "Beta and production must be separate projects",
   );
-  assert.match(
-    env.GITHUB_SUBJECT_PREFIX ?? "",
-    /^repo:tylerdoll(?:@\d+)?\/liftline(?:@\d+)?$/,
-    "GitHub OIDC subject prefix required",
-  );
 }

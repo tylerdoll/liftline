@@ -4,8 +4,44 @@ import { readFileSync } from "node:fs";
 import { App } from "aws-cdk-lib";
 import { Template } from "aws-cdk-lib/assertions";
 import { DataStack } from "../infra/stacks";
+import { DeliveryStack } from "../infra/delivery";
 const template = (name: string) =>
   JSON.parse(readFileSync(`cdk.out/${name}.template.json`, "utf8"));
+
+test("runner configuration rejects wildcard actors and foreign project connections", () => {
+  const props = {
+    env: { account: "111111111111", region: "us-east-2" },
+    stage: "beta",
+    repository: "tylerdoll/liftline",
+    runner: {
+      connectionArn:
+        "arn:aws:codeconnections:us-east-2:111111111111:connection/00000000-0000-0000-0000-000000000000",
+      trustedActorIds: ["123"],
+    },
+  };
+  assert.throws(
+    () =>
+      new DeliveryStack(new App(), "Wildcard", {
+        ...props,
+        runner: { ...props.runner, trustedActorIds: [".*"] },
+      }),
+    /numeric trusted/,
+  );
+  assert.throws(
+    () =>
+      new DeliveryStack(new App(), "ForeignConnection", {
+        ...props,
+        runner: {
+          ...props.runner,
+          connectionArn: props.runner.connectionArn.replace(
+            "111111111111",
+            "222222222222",
+          ),
+        },
+      }),
+    /this project/,
+  );
+});
 
 test("owner foundation creates recovery writer roles before enabling destination-dependent replication", () => {
   const app = new App();
@@ -96,7 +132,7 @@ test("synthesized application exposes scoped JWT API, private assets, and invite
     assert.ok(!JSON.stringify(p).includes("dynamodb:Scan"));
 });
 
-test("release roles trust only their GitHub environment and cannot deploy data stacks", () => {
+test("release runners use scoped CodeBuild trust and cannot deploy data stacks", () => {
   for (const stage of ["beta", "prod"]) {
     const t = template(`LiftlineDelivery-${stage}`);
     const resources: any[] = Object.values(t.Resources);
@@ -106,15 +142,35 @@ test("release roles trust only their GitHub environment and cannot deploy data s
         r.Properties.RoleName === `liftline-${stage}-github`,
     );
     const trust = role.Properties.AssumeRolePolicyDocument.Statement[0];
-    assert.equal(trust.Action, "sts:AssumeRoleWithWebIdentity");
-    assert.equal(
-      trust.Condition.StringEquals["token.actions.githubusercontent.com:aud"],
-      "sts.amazonaws.com",
+    assert.equal(trust.Action, "sts:AssumeRole");
+    assert.equal(trust.Principal.Service, "codebuild.amazonaws.com");
+    assert.ok(trust.Condition.StringEquals["aws:SourceAccount"]);
+    assert.match(
+      trust.Condition.ArnEquals["aws:SourceArn"],
+      new RegExp(`:project/liftline-${stage}-release$`),
     );
-    assert.equal(
-      trust.Condition.StringEquals["token.actions.githubusercontent.com:sub"],
-      `${process.env.GITHUB_SUBJECT_PREFIX ?? "repo:tylerdoll/liftline"}:environment:${stage}`,
+    assert.ok(
+      !JSON.stringify(resources).includes(
+        "token.actions.githubusercontent.com",
+      ),
     );
+    const runner = resources.find(
+      (r) => r.Type === "AWS::CodeBuild::Project",
+    ).Properties;
+    assert.equal(runner.Visibility, "PRIVATE");
+    assert.equal(runner.ConcurrentBuildLimit, 1);
+    assert.equal(runner.Environment.PrivilegedMode, false);
+    assert.equal(runner.Source.Auth.Type, "CODECONNECTIONS");
+    assert.deepEqual(runner.Triggers.FilterGroups, [
+      [
+        { Type: "EVENT", Pattern: "WORKFLOW_JOB_QUEUED" },
+        { Type: "WORKFLOW_NAME", Pattern: "^Exact artifact release$" },
+        {
+          Type: "ACTOR_ACCOUNT_ID",
+          Pattern: `^(${(process.env.GITHUB_TRUSTED_ACTOR_IDS ?? "0").split(",").join("|")})$`,
+        },
+      ],
+    ]);
     const policies = resources.filter(
       (r) =>
         r.Type === "AWS::IAM::Policy" &&
