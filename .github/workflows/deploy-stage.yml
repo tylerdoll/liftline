@@ -8,14 +8,15 @@ on:
 jobs:
   deploy:
     if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
+    runs-on: codebuild-liftline-${{ inputs.stage }}-release-${{ github.run_id }}-${{ github.run_attempt }}
     timeout-minutes: 45
     environment: ${{ inputs.stage }}
     permissions:
       contents: read
-      id-token: write
     env:
       STAGE: ${{ inputs.stage }}
+      AWS_REGION: us-east-2
+      AWS_DEFAULT_REGION: us-east-2
       BETA_ACCOUNT: ${{ secrets.BETA_ACCOUNT }}
       PROD_ACCOUNT: ${{ secrets.PROD_ACCOUNT }}
     steps:
@@ -45,12 +46,6 @@ jobs:
         env:
           CANDIDATE_KEY: ${{ secrets.CANDIDATE_KEY }}
       - run: node --import tsx scripts/verify-manifest.ts
-      - uses: aws-actions/configure-aws-credentials@ff717079ee2060e4bcee96c4779b553acc87447c
-        with:
-          role-to-assume: ${{ secrets.DEPLOY_ROLE_ARN }}
-          aws-region: us-east-2
-          allowed-account-ids: ${{ inputs.stage == 'prod' && secrets.PROD_ACCOUNT || secrets.BETA_ACCOUNT }}
-          mask-aws-account-id: true
       - run: pnpm exec playwright install --with-deps chromium
       - id: deploy
         run: node --import tsx scripts/deploy.ts "$STAGE"

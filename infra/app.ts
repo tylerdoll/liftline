@@ -29,11 +29,12 @@ for (const [stage, account] of [
     env,
     stage,
     repository: "tylerdoll/liftline",
-    githubSubject: process.env.GITHUB_SUBJECT_PREFIX
-      ? `${process.env.GITHUB_SUBJECT_PREFIX}:environment:${stage}`
-      : undefined,
-    existingGithubProviderArn:
-      process.env[`${stage.toUpperCase()}_GITHUB_PROVIDER_ARN`],
+    runner: {
+      connectionArn:
+        process.env[`${stage.toUpperCase()}_CONNECTION_ARN`] ??
+        `arn:aws:codeconnections:us-east-2:${account}:connection/00000000-0000-0000-0000-000000000000`,
+      trustedActorIds: (process.env.GITHUB_TRUSTED_ACTOR_IDS ?? "0").split(","),
+    },
   });
   const data = new DataStack(app, `LiftlineData-${stage}`, {
     env,

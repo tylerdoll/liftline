@@ -18,7 +18,6 @@ jobs:
       PROD_ACCOUNT: ${{ secrets.PROD_ACCOUNT }}
       BETA_ALERT_EMAIL: ${{ secrets.BETA_ALERT_EMAIL }}
       PROD_ALERT_EMAIL: ${{ secrets.PROD_ALERT_EMAIL }}
-      GITHUB_SUBJECT_PREFIX: ${{ vars.LIFTLINE_OIDC_SUBJECT_PREFIX }}
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
@@ -51,8 +50,8 @@ jobs:
     secrets: inherit
     permissions:
       contents: read
-      id-token: write
   prod:
+    if: vars.LIFTLINE_PROD_RELEASE_ENABLED == 'true'
     needs: beta
     uses: ./.github/workflows/deploy-stage.yml
     with:
@@ -60,4 +59,3 @@ jobs:
     secrets: inherit
     permissions:
       contents: read
-      id-token: write

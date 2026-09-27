@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { readFile, mkdir } from "node:fs/promises";
+import { readFile, mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 // This entry point is for the project owner, never an agent or GitHub release job.
@@ -7,6 +7,8 @@ const [phase, ...args] = process.argv.slice(2);
 const phases: Record<string, { stage: "beta" | "prod"; stacks?: string[] }> = {
   "bootstrap-beta": { stage: "beta" },
   "bootstrap-prod": { stage: "prod" },
+  "connection-beta": { stage: "beta" },
+  "connection-prod": { stage: "prod" },
   "foundation-prod": {
     stage: "prod",
     stacks: ["LiftlineDelivery-prod", "LiftlineData-prod"],
@@ -43,10 +45,10 @@ if (profile === "liftline-alpha")
   throw new Error("Alpha profile cannot provision beta or prod");
 type Config = {
   region: string;
-  beta: { account: string; alertEmail?: string; githubProviderArn?: string };
-  prod: { account: string; alertEmail?: string; githubProviderArn?: string };
+  beta: { account: string; alertEmail?: string; connectionArn?: string };
+  prod: { account: string; alertEmail?: string; connectionArn?: string };
   alertEmail?: string;
-  githubSubjectPrefix: string;
+  githubTrustedActorIds: string[];
 };
 const config: Config = JSON.parse(
   await readFile("private/stages.json", "utf8"),
@@ -65,16 +67,21 @@ for (const stage of ["beta", "prod"] as const) {
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.endsWith(".invalid"))
     throw new Error(`Real ${stage} alert email required`);
   if (
-    project.githubProviderArn &&
-    project.githubProviderArn !==
-      `arn:aws:iam::${project.account}:oidc-provider/token.actions.githubusercontent.com`
+    project.connectionArn &&
+    !new RegExp(
+      `^arn:aws:codeconnections:us-east-2:${project.account}:connection/[a-f0-9-]{36}$`,
+    ).test(project.connectionArn)
   )
-    throw new Error(`Invalid ${stage} GitHub provider ARN`);
+    throw new Error(`Invalid ${stage} CodeConnections ARN`);
 }
 if (config.beta.account === config.prod.account)
   throw new Error("Beta and prod must be separate projects");
-if (!/^repo:[^/:@]+@\d+\/[^/:@]+@\d+$/.test(config.githubSubjectPrefix))
-  throw new Error("GitHub immutable repository subject prefix required");
+if (
+  !Array.isArray(config.githubTrustedActorIds) ||
+  !config.githubTrustedActorIds.length ||
+  config.githubTrustedActorIds.some((id) => !/^[1-9]\d*$/.test(id))
+)
+  throw new Error("Explicit trusted GitHub numeric actor IDs required");
 const env: NodeJS.ProcessEnv = {
   ...process.env,
   AWS_PROFILE: profile,
@@ -85,9 +92,9 @@ const env: NodeJS.ProcessEnv = {
   PROD_ACCOUNT: config.prod.account,
   BETA_ALERT_EMAIL: config.beta.alertEmail ?? config.alertEmail,
   PROD_ALERT_EMAIL: config.prod.alertEmail ?? config.alertEmail,
-  GITHUB_SUBJECT_PREFIX: config.githubSubjectPrefix,
-  BETA_GITHUB_PROVIDER_ARN: config.beta.githubProviderArn,
-  PROD_GITHUB_PROVIDER_ARN: config.prod.githubProviderArn,
+  GITHUB_TRUSTED_ACTOR_IDS: config.githubTrustedActorIds.join(","),
+  BETA_CONNECTION_ARN: config.beta.connectionArn,
+  PROD_CONNECTION_ARN: config.prod.connectionArn,
   RECOVERY_READY:
     phase === "replication" || phase.startsWith("app-") ? "true" : "false",
 };
@@ -183,7 +190,46 @@ if (phase === "foundation-prod") {
   }
 }
 await mkdir("private", { recursive: true });
-if (phase.startsWith("bootstrap-")) {
+if (phase.startsWith("connection-")) {
+  const name = `liftline-${selected.stage}-github`;
+  const matches = JSON.parse(
+    aws("codeconnections", "list-connections"),
+  ).Connections.filter(
+    (connection: { ConnectionName: string }) =>
+      connection.ConnectionName === name,
+  );
+  if (matches.length > 1)
+    throw new Error("Multiple matching connections; resolve manually");
+  const arn =
+    config[selected.stage].connectionArn ??
+    matches[0]?.ConnectionArn ??
+    JSON.parse(
+      aws(
+        "codeconnections",
+        "create-connection",
+        "--provider-type",
+        "GitHub",
+        "--connection-name",
+        name,
+      ),
+    ).ConnectionArn;
+  const connection = JSON.parse(
+    aws("codeconnections", "get-connection", "--connection-arn", arn),
+  ).Connection;
+  if (
+    connection.ProviderType !== "GitHub" ||
+    connection.OwnerAccountId !== identity.Account
+  )
+    throw new Error("Connection owner/provider mismatch");
+  config[selected.stage].connectionArn = arn;
+  await writeFile(
+    "private/stages.json",
+    JSON.stringify(config, null, 2) + "\n",
+  );
+  console.log(
+    `GitHub connection: ${connection.ConnectionStatus}. Complete a pending connection in the us-east-2 CodeConnections console, granting only this repository.`,
+  );
+} else if (phase.startsWith("bootstrap-")) {
   cdk(
     "bootstrap",
     `aws://${identity.Account}/${config.region}`,
@@ -195,6 +241,20 @@ if (phase.startsWith("bootstrap-")) {
   env.LIFTLINE_OWNER_SETUP = selected.stage;
   node("--import", "tsx", "scripts/owner-smoke-users.ts");
 } else {
+  if (phase.startsWith("foundation-")) {
+    const arn = config[selected.stage].connectionArn;
+    if (!arn)
+      throw new Error(
+        "Run the connection phase and authorize its GitHub App first",
+      );
+    const connection = JSON.parse(
+      aws("codeconnections", "get-connection", "--connection-arn", arn),
+    ).Connection;
+    if (connection.ConnectionStatus !== "AVAILABLE")
+      throw new Error(
+        "GitHub connection is not AVAILABLE; finish authorization in the AWS console",
+      );
+  }
   node("node_modules/vite/bin/vite.js", "build");
   node("--import", "tsx", "scripts/bundle.ts");
   node("--import", "tsx", "infra/app.ts");

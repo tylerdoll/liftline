@@ -13,7 +13,6 @@ test("release configuration rejects missing, placeholder, or shared projects", (
     PROD_ACCOUNT: "123456789013",
     BETA_ALERT_EMAIL: "beta@example.invalid",
     PROD_ALERT_EMAIL: "prod@example.invalid",
-    GITHUB_SUBJECT_PREFIX: "repo:tylerdoll@123/liftline@456",
   };
   assert.doesNotThrow(() => validateReleaseConfig(valid));
   assert.throws(() => validateReleaseConfig({ ...valid, BETA_ACCOUNT: "" }));
@@ -22,12 +21,6 @@ test("release configuration rejects missing, placeholder, or shared projects", (
   );
   assert.throws(() =>
     validateReleaseConfig({ ...valid, PROD_ACCOUNT: "222222222222" }),
-  );
-  assert.throws(() =>
-    validateReleaseConfig({
-      ...valid,
-      GITHUB_SUBJECT_PREFIX: "repo:someone/else",
-    }),
   );
 });
 
