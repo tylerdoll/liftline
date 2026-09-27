@@ -51,6 +51,7 @@ jobs:
     permissions:
       contents: read
   prod:
+    if: vars.LIFTLINE_PROD_RELEASE_ENABLED == 'true'
     needs: beta
     uses: ./.github/workflows/deploy-stage.yml
     with:

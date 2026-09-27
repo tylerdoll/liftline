@@ -25,6 +25,8 @@ Use separately named owner CLI profiles. The owner signs in with `aws login --pr
 
 ## Create foundations in order
 
+**Beta proof comes first.** For a new deployment mechanism, run only `bootstrap-beta`, `connection-beta`, `foundation-beta`, `app-beta`, `catalog-beta`, and `smoke-beta` initially. Authorize beta's connection before its foundation step. Configure beta secrets, enable `LIFTLINE_RELEASE_ENABLED`, and leave `LIFTLINE_PROD_RELEASE_ENABLED` false. Require a successful beta runner deployment and authenticated integration run before starting the production phases below. The recovery sequence still requires production writer roles before the beta recovery bucket, but beta's application does not depend on that bucket. Do not run the entire sequence below uninterrupted when beta proof is still pending.
+
 Run these commands from the repository root. The profile names below are examples chosen by the owner. Each deployment prints a diff and asks for approval of security changes. Read the complete diff, particularly resource replacements, before proceeding.
 
 ```sh
@@ -89,4 +91,4 @@ Copy each name/value from ignored `private/beta-smoke-secrets.json` into **Setti
 
 GitHub configuration uses repository secrets `BETA_ACCOUNT`, `PROD_ACCOUNT`, `BETA_ALERT_EMAIL`, `PROD_ALERT_EMAIL`, and `CANDIDATE_KEY`. The previous `DEPLOY_ROLE_ARN` secrets and `LIFTLINE_OIDC_SUBJECT_PREFIX` variable are no longer used. The candidate is authenticated/encrypted before uploading to this public repository's Actions artifacts; keep the encryption key stable while a release is running.
 
-After owner setup and smoke secrets are complete, set repository variable `LIFTLINE_RELEASE_ENABLED` to `true`, then run **Actions > Exact artifact release > Run workflow** on `main`. Beta integration failure blocks production; an application rollback restores previous aliases/frontend where a prior accepted release exists. The first release has no prior accepted application to roll back to and remains failed/unopened if its checks fail. Data is always retained.
+After beta setup and smoke secrets are complete, set repository variable `LIFTLINE_RELEASE_ENABLED` to `true`, then run **Actions > Exact artifact release > Run workflow** on `main`. Keep `LIFTLINE_PROD_RELEASE_ENABLED` false until beta proof and subsequent production setup are complete. Beta integration failure blocks production; an application rollback restores previous aliases/frontend where a prior accepted release exists. The first release has no prior accepted application to roll back to and remains failed/unopened if its checks fail. Data is always retained.
